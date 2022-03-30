@@ -25,5 +25,8 @@ where
         .read_to_string(&mut input)
         .expect("failed to read source file");
 
-    let _tokens = scanner::tokenize(&input);
+    match scanner::tokenize(&input) {
+        Ok(tokens) => println!("{:?}", tokens),
+        Err(e) => eprintln!("{}", e),
+    }
 }

@@ -49,7 +49,7 @@ impl<'a> Cursor<'a> {
         let tok = self.read_ident().map(|tok| Ok(tok))
             .or(self.read_number())
             .unwrap_or_else(move || {
-                if first == '>' {
+                if self.consume_next_if(|c| c == '>').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
                         Token::RelOp(RelOp::Ge)
                     } else {
@@ -57,7 +57,7 @@ impl<'a> Cursor<'a> {
                     };
 
                     Ok(tok)
-                } else if first == '<' {
+                } else if self.consume_next_if(|c| c == '<').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
                         Token::RelOp(RelOp::Le)
                     } else if self.consume_next_if(|c| c == '-').is_some() {
@@ -67,24 +67,24 @@ impl<'a> Cursor<'a> {
                     };
 
                     Ok(tok)
-                } else if first == '=' {
+                } else if self.consume_next_if(|c| c == '=').is_some() {
                     self.relop_if_eq_sign(first, RelOp::Eq)
-                } else if first == '!' {
+                } else if self.consume_next_if(|c| c == '!').is_some() {
                     self.relop_if_eq_sign(first, RelOp::Ne)
-                } else if first == '+'
-                    || first == '-'
-                    || first == '*'
-                    || first == '/'
-                    || first == '('
-                    || first == ')'
-                    || first == ','
-                    || first == '{'
-                    || first == '}'
-                    || first == ';'
-                    || first == '.'
+                } else if let Some(c) = self.consume_next_if(|c| c == '+'
+                    || c == '-'
+                    || c == '*'
+                    || c == '/'
+                    || c == '('
+                    || c == ')'
+                    || c == ','
+                    || c == '{'
+                    || c == '}'
+                    || c == ';'
+                    || c == '.')
                 {
                     // punctuation
-                    Ok(Token::Punctuation(first))
+                    Ok(Token::Punctuation(c))
                 } else {
                     // invalid
                     Err(InvalidCharError(first))
@@ -157,5 +157,7 @@ impl Error for InvalidCharError { }
 
 pub fn tokenize(input: &str) -> Result<Vec<Token>, InvalidCharError> {
     let mut cursor = Cursor::new(input);
-    iter::from_fn(move || cursor.advance()).try_collect()
+    iter::from_fn(move || {
+        cursor.advance()
+    }).try_collect()
 }
