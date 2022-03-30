@@ -1,10 +1,6 @@
-use std::{
-    ffi::OsString,
-    fs::File,
-    io::Read,
-};
-use clap::Parser;
 use crate::scanner;
+use clap::Parser;
+use std::{ffi::OsString, fs::File, io::Read};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -25,7 +21,9 @@ where
     let mut src_file = File::open(config.input).expect("failed to open input file");
 
     let mut input = String::new();
-    src_file.read_to_string(&mut input);
+    src_file
+        .read_to_string(&mut input)
+        .expect("failed to read source file");
 
     let _tokens = scanner::tokenize(&input);
 }

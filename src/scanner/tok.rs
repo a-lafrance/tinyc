@@ -6,6 +6,7 @@ pub enum Token {
     Ident(String),
     RelOp(RelOp),
     Punctuation(char),
+    AssignOp,
 }
 
 impl Display for Token {
@@ -15,24 +16,34 @@ impl Display for Token {
             Token::Ident(ident) => write!(f, "{}", ident),
             Token::RelOp(op) => write!(f, "{}", op),
             Token::Punctuation(c) => write!(f, "{}", c),
+            Token::AssignOp => write!(f, "<-"),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RelOp {
-    Eq, Ne, Gt, Ge, Lt, Le
+    Eq,
+    Ne,
+    Gt,
+    Ge,
+    Lt,
+    Le,
 }
 
 impl Display for RelOp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            RelOp::Eq => "==",
-            RelOp::Ne => "!=",
-            RelOp::Gt => ">",
-            RelOp::Ge => ">=",
-            RelOp::Lt => "<",
-            RelOp::Le => "<=",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                RelOp::Eq => "==",
+                RelOp::Ne => "!=",
+                RelOp::Gt => ">",
+                RelOp::Ge => ">=",
+                RelOp::Lt => "<",
+                RelOp::Le => "<=",
+            }
+        )
     }
 }
