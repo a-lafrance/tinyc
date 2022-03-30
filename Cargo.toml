@@ -1,6 +1,9 @@
 [package]
 name = "tinyc"
+authors = ["Arthur Lafrance <lafranca@uci.edu>"]
+description = "The Tiny compiler"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "3.1.6", features = ["derive"] }

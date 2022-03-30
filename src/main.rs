@@ -1,3 +1,7 @@
+mod driver;
+
+use std::env;
+
 fn main() {
-    println!("Hello, world!");
+    driver::start(env::args());
 }
