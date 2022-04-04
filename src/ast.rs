@@ -102,6 +102,12 @@ impl From<TermOp> for char {
 /* STATEMENTS */
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Assignment {
+    pub place: String,
+    pub value: Expr,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block;
 
 #[derive(Clone, Debug, PartialEq)]

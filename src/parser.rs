@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
+    ast::{Assignment, Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
     scanner::TokenResult,
     tok::{RelOp, Token},
 };
@@ -27,6 +27,23 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         todo!()
     }
 
+    pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
+        match self.consume_ident_if_exists() {
+            Some(keyword) if keyword == "let" => {
+                let place = self.consume_ident_if_exists().ok_or(())?;
+
+                if self.expect_assign_op() {
+                    let value = self.parse_expr()?;
+                    Ok(Assignment { place, value })
+                } else {
+                    Err(())
+                }
+            },
+            _ => Err(()),
+        }
+
+    }
+
     pub fn parse_expr(&mut self) -> ParseResult<Expr> {
         let root = self.parse_term()?;
         let mut ops = vec![];
@@ -51,6 +68,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         } else if let Some(n) = self.consume_number_if_exists() {
             Ok(Factor::Number(n))
         } else {
+            // TODO: don't consume call here
             match self.consume_ident_if_exists() {
                 Some(call_keyword) if call_keyword == "call" => Ok(Factor::Call(self.parse_func_call()?)),
                 Some(ident) => Ok(Factor::VarRef(ident)),
@@ -88,6 +106,16 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.current = self.stream.next();
 
         prev
+    }
+
+    pub fn expect_assign_op(&mut self) -> bool {
+        match self.current {
+            Some(Ok(Token::AssignOp)) => {
+                self.advance();
+                true
+            },
+            _ => false,
+        }
     }
 
     pub fn expect_relop(&mut self) -> ParseResult<RelOp> {
@@ -131,6 +159,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             _ => None,
         }
     }
+
     pub fn consume_termop_if_exists(&mut self) -> Option<TermOp> {
         match self.current {
             Some(Ok(Token::Punctuation('+'))) => {
@@ -162,6 +191,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             _ => None,
         }
     }
+
+    pub fn peek_ident_if_exists(&self) -> Option<&str> {
+        match self.current {
+            Some(Ok(Token::Ident(ref ident))) => Some(ident),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +207,61 @@ mod tests {
 
     fn stream_from_tokens(tokens: Vec<Token>) -> impl Iterator<Item = TokenResult> {
         tokens.into_iter().map(|tok| Ok(tok))
+    }
+
+    #[test]
+    fn parse_assignment_simple() {
+        // asg = 123
+        let var = "asg".to_string();
+        let val = 123;
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("let".to_string()),
+            Token::Ident(var.clone()),
+            Token::AssignOp,
+            Token::Number(val),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_assignment(), Ok(Assignment {
+            place: var,
+            value: Expr {
+                root: Term {
+                    root: Factor::Number(val),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+        }));
+    }
+
+    #[test]
+    fn parse_assignment_complex() {
+        // result = a * 2 + b
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("let".to_string()),
+            Token::Ident("result".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('*'),
+            Token::Number(2),
+            Token::Punctuation('+'),
+            Token::Ident("b".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_assignment(), Ok(Assignment {
+            place: "result".to_string(),
+            value: Expr {
+                root: Term {
+                    root: Factor::VarRef("a".to_string()),
+                    ops: vec![(FactorOp::Mul, Factor::Number(2))],
+                },
+                ops: vec![(TermOp::Add, Term {
+                    root: Factor::VarRef("b".to_string()),
+                    ops: vec![],
+                })],
+            },
+        }));
     }
 
     #[test]
