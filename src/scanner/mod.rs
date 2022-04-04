@@ -8,6 +8,8 @@ use std::{
     str::Chars,
 };
 
+pub type TokenResult = Result<Token, InvalidCharError>;
+
 pub struct Cursor<'a> {
     input: Chars<'a>,
 }
@@ -42,7 +44,7 @@ impl<'a> Cursor<'a> {
         while self.consume_next_if(|c| c.is_ascii_whitespace()).is_some() { }
     }
 
-    pub fn advance(&mut self) -> Option<Result<Token, InvalidCharError>> {
+    pub fn advance(&mut self) -> Option<TokenResult> {
         self.skip_whitespace();
         let first = self.peek()?;
 
@@ -110,7 +112,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn read_number(&mut self) -> Option<Result<Token, InvalidCharError>> {
+    fn read_number(&mut self) -> Option<TokenResult> {
         // read digits
         // if you hit a letter, error
         // if you hit anything else, end the token and return
@@ -155,7 +157,7 @@ impl Display for InvalidCharError {
 impl Error for InvalidCharError { }
 
 
-pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token, InvalidCharError>> + '_ {
+pub fn tokenize(input: &str) -> impl Iterator<Item = TokenResult> + '_ {
     let mut cursor = Cursor::new(input);
 
     iter::from_fn(move || {
