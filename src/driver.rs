@@ -1,6 +1,6 @@
-use std::ffi::OsString;
-
+use crate::scanner;
 use clap::Parser;
+use std::{ffi::OsString, fs::File, io::Read};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -18,7 +18,15 @@ where
     T: Into<OsString> + Clone,
 {
     let config = Config::parse_from(args);
-    println!("{:?}", config);
-    
-    // TODO: run the compiler
+    let mut src_file = File::open(config.input).expect("failed to open input file");
+
+    let mut input = String::new();
+    src_file
+        .read_to_string(&mut input)
+        .expect("failed to read source file");
+
+    match scanner::tokenize(&input).try_collect::<Vec<_>>() {
+        Ok(tokens) => println!("{:?}", tokens),
+        Err(e) => eprintln!("{}", e),
+    };
 }

@@ -1,0 +1,12 @@
+main
+var a, b, c; {
+    let a <- 1 + 2;
+    let b <- a * 4 - 2 / 3;
+
+    if b < 0
+    then
+        let c <- b - a * 2;
+    else
+        let c <- b / 2;
+    fi;
+}.
