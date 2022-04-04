@@ -13,11 +13,11 @@ jobs:
             - name: Install Rust toolchain
               uses: actions-rs/toolchain@v1
               with:
-                  toolchain: nightly
+                  toolchain: stable
                   components: clippy
 
             - name: Run clippy
-              run: cargo +nightly clippy
+              run: cargo clippy
     test:
         runs-on: ubuntu-latest
         steps:
@@ -27,7 +27,7 @@ jobs:
             - name: Install Rust toolchain
               uses: actions-rs/toolchain@v1
               with:
-                  toolchain: nightly
+                  toolchain: stable
 
             - name: Run tests
-              run: cargo +nightly test
+              run: cargo test

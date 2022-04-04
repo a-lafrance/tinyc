@@ -1,7 +1,5 @@
-mod astparse;
-
 use crate::{
-    ast::{Computation, FactorOp, Relation, TermOp},
+    ast::{Computation, FactorOp, TermOp},
     scanner::{
         tok::{RelOp, Token},
         TokenResult,
@@ -18,6 +16,7 @@ pub fn parse(tokens: impl Iterator<Item = TokenResult>) -> ParseResult<Computati
     let mut stream = TokenStream::new(tokens);
     Computation::parse(&mut stream)
 }
+
 
 pub struct TokenStream<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
