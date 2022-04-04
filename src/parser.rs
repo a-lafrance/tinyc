@@ -1,9 +1,7 @@
 use crate::{
     ast::{Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
-    scanner::{
-        tok::{RelOp, Token},
-        TokenResult,
-    },
+    scanner::TokenResult,
+    tok::{RelOp, Token},
 };
 
 pub type ParseResult<T> = Result<T, ()>;

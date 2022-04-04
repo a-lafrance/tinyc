@@ -1,6 +1,7 @@
 pub(crate) mod ast;
 pub(crate) mod parser;
 pub(crate) mod scanner;
+pub(crate) mod tok;
 
 use std::{ffi::OsString, fs::File, io::Read};
 use clap::Parser as ArgParse;

@@ -1,12 +1,10 @@
-pub mod tok;
-
-use self::tok::{RelOp, Token};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     iter,
     str::Chars,
 };
+use crate::tok::{RelOp, Token};
 
 pub type TokenResult = Result<Token, InvalidCharError>;
 

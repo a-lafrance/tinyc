@@ -1,4 +1,4 @@
-use crate::scanner::tok::RelOp;
+use crate::tok::RelOp;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Computation {
