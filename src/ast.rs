@@ -108,10 +108,39 @@ pub struct Assignment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block;
+pub struct Block {
+    pub body: Vec<Stmt>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncCall {
     pub name: String,
     pub args: Vec<Expr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfStmt {
+    pub condition: Relation,
+    pub then_block: Block,
+    pub else_block: Option<Block>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Loop {
+    pub condition: Relation,
+    pub body: Block,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Return {
+    pub value: Option<Expr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt {
+    Assignment(Assignment),
+    FuncCall(FuncCall),
+    If(IfStmt),
+    Loop(Loop),
+    Return(Return),
 }

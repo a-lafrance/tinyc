@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
+    ast::{Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, IfStmt, Loop, Relation, Return, Stmt, Term, TermOp},
     scanner::TokenResult,
     tok::{RelOp, Token},
 };
@@ -39,7 +39,16 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_block(&mut self) -> ParseResult<Block> {
-        todo!()
+        let mut body = vec![self.parse_stmt()?];
+
+        while self.expect_punctuation_matching(';') {
+            // FIXME: this doesn't feel robust enough
+            if let Ok(stmt) = self.parse_stmt() {
+                body.push(stmt);
+            }
+        }
+
+        Ok(Block { body })
     }
 
     pub fn parse_computation(&mut self) -> ParseResult<Computation> {
@@ -101,12 +110,51 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
+    pub fn parse_if_stmt(&mut self) -> ParseResult<IfStmt> {
+        self.expect_keyword_or_err("if")?;
+        let condition = self.parse_relation()?;
+
+        self.expect_keyword_or_err("then")?;
+        let then_block = self.parse_block()?;
+
+        let else_block = if self.expect_keyword("else") {
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+
+        self.expect_keyword_or_err("fi")?;
+        Ok(IfStmt { condition, then_block, else_block })
+    }
+
+    pub fn parse_loop(&mut self) -> ParseResult<Loop> {
+        self.expect_keyword_or_err("while")?;
+        let condition = self.parse_relation()?;
+
+        self.expect_keyword_or_err("do")?;
+        let body = self.parse_block()?;
+
+        self.expect_keyword_or_err("od")?;
+        Ok(Loop { condition, body })
+    }
+
     pub fn parse_relation(&mut self) -> ParseResult<Relation> {
         let lhs = self.parse_expr()?;
         let op = self.expect_relop()?;
         let rhs = self.parse_expr()?;
 
         Ok(Relation { lhs, rhs, op })
+    }
+
+    pub fn parse_return(&mut self) -> ParseResult<Return> {
+        self.expect_keyword_or_err("return")?;
+        let value = self.parse_expr().ok(); // FIXME: this is probably very bad (lookahead?)
+
+        Ok(Return { value })
+    }
+
+    pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
+        todo!()
     }
 
     pub fn parse_term(&mut self) -> ParseResult<Term> {
@@ -145,6 +193,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
                 true
             },
             _ => false,
+        }
+    }
+
+    pub fn expect_keyword_or_err<K: AsRef<str>>(&mut self, keyword: K) -> ParseResult<()> {
+        if self.expect_keyword(keyword) {
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
