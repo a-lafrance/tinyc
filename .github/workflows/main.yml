@@ -16,7 +16,7 @@ jobs:
                   toolchain: nightly
 
             - name: Run clippy
-              run: cargo clippy
+              run: cargo +nightly clippy
     test:
         runs-on: ubuntu-latest
         steps:
@@ -29,4 +29,4 @@ jobs:
                   toolchain: nightly
 
             - name: Run tests
-              run: cargo test
+              run: cargo +nightly test
