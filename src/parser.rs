@@ -376,4 +376,59 @@ mod tests {
             op,
         }));
     }
+
+    #[test]
+    fn parse_term_single_factor() {
+        let n = 5;
+        let tokens = stream_from_tokens(vec![Token::Number(n)]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_term(), Ok(Term {
+            root: Factor::Number(n),
+            ops: vec![],
+        }));
+    }
+
+    #[test]
+    fn parse_term_two_factors() {
+        let n = 5;
+        let m = 6;
+        let op = FactorOp::Mul;
+        let tokens = stream_from_tokens(vec![
+            Token::Number(n),
+            Token::Punctuation(op.into()),
+            Token::Number(m),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_term(), Ok(Term {
+            root: Factor::Number(n),
+            ops: vec![(op, Factor::Number(m))],
+        }));
+    }
+
+    #[test]
+    fn parse_term_many_factor() {
+        let x = 6;
+        let y = 4;
+        let z = 2;
+        let op1 = FactorOp::Mul;
+        let op2 = FactorOp::Div;
+        let tokens = stream_from_tokens(vec![
+            Token::Number(x),
+            Token::Punctuation(op1.into()),
+            Token::Number(y),
+            Token::Punctuation(op2.into()),
+            Token::Number(z),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_term(), Ok(Term {
+            root: Factor::Number(x),
+            ops: vec![
+                (op1, Factor::Number(y)),
+                (op2, Factor::Number(z)),
+            ],
+        }));
+    }
 }
