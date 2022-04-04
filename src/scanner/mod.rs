@@ -39,7 +39,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(_) = self.consume_next_if(|c| c.is_ascii_whitespace()) { }
+        while self.consume_next_if(|c| c.is_ascii_whitespace()).is_some() { }
     }
 
     pub fn advance(&mut self) -> Option<Result<Token, InvalidCharError>> {
@@ -47,7 +47,7 @@ impl<'a> Cursor<'a> {
         let first = self.peek()?;
 
         let tok = self.read_number()
-            .or(self.read_ident().map(|tok| Ok(tok)))
+            .or_else(|| self.read_ident().map(Ok))
             .unwrap_or_else(move || {
                 if self.consume_next_if(|c| c == '>').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
@@ -117,7 +117,7 @@ impl<'a> Cursor<'a> {
         let mut n = 0;
         let mut found_digit = false;
 
-        while let Some(d) = self.consume_next_if(|c| c.is_ascii_digit()).map(|c| c.to_digit(10)).flatten() {
+        while let Some(d) = self.consume_next_if(|c| c.is_ascii_digit()).and_then(|c| c.to_digit(10)) {
             n = 10 * n + d;
             found_digit = true;
         }
