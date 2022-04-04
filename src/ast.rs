@@ -54,9 +54,9 @@ impl TryFrom<char> for TermOp {
     }
 }
 
-impl Into<char> for TermOp {
-    fn into(self) -> char {
-        match self {
+impl From<TermOp> for char {
+    fn from(op: TermOp) -> char {
+        match op {
             TermOp::Add => '+',
             TermOp::Sub => '-',
         }
@@ -89,9 +89,9 @@ impl TryFrom<char> for FactorOp {
     }
 }
 
-impl Into<char> for FactorOp {
-    fn into(self) -> char {
-        match self {
+impl From<FactorOp> for char {
+    fn from(op: FactorOp) -> char {
+        match op {
             FactorOp::Mul => '*',
             FactorOp::Div => '/',
         }
