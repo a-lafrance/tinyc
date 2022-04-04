@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Computation, FactorOp, TermOp},
+    ast::{Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
     scanner::{
         tok::{RelOp, Token},
         TokenResult,
@@ -8,27 +8,81 @@ use crate::{
 
 pub type ParseResult<T> = Result<T, ()>;
 
-pub trait Parse: Sized {
-    fn parse(stream: &mut TokenStream<impl Iterator<Item = TokenResult>>) -> ParseResult<Self>;
-}
-
-pub fn parse(tokens: impl Iterator<Item = TokenResult>) -> ParseResult<Computation> {
-    let mut stream = TokenStream::new(tokens);
-    Computation::parse(&mut stream)
-}
-
-
-pub struct TokenStream<T: Iterator<Item = TokenResult>> {
+pub struct Parser<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
     stream: T,
 }
 
-impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
+impl<T: Iterator<Item = TokenResult>> Parser<T> {
     pub fn new(mut stream: T) -> Self {
-        TokenStream {
+        Parser {
             current: stream.next(),
             stream,
         }
+    }
+
+    pub fn peek(&self) -> Option<&TokenResult> {
+        self.current.as_ref()
+    }
+
+    pub fn parse_computation(&mut self) -> ParseResult<Computation> {
+        todo!()
+    }
+
+    pub fn parse_expr(&mut self) -> ParseResult<Expr> {
+        let root = self.parse_term()?;
+        let mut ops = vec![];
+
+        while let Some(op) = self.consume_termop_if_exists() {
+            let next = self.parse_term()?;
+            ops.push((op, next))
+        }
+
+        Ok(Expr { root, ops })
+    }
+
+    pub fn parse_factor(&mut self) -> ParseResult<Factor> {
+        if self.expect_punctuation_matching('(') {
+            let subexpr = Box::new(self.parse_expr()?);
+
+            if self.expect_punctuation_matching(')') {
+                Ok(Factor::SubExpr(subexpr))
+            } else {
+                Err(())
+            }
+        } else if let Some(n) = self.consume_number_if_exists() {
+            Ok(Factor::Number(n))
+        } else {
+            match self.consume_ident_if_exists() {
+                Some(call_keyword) if call_keyword == "call" => Ok(Factor::Call(self.parse_func_call()?)),
+                Some(ident) => Ok(Factor::VarRef(ident)),
+                None => Err(()),
+            }
+        }
+    }
+
+    pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
+        todo!()
+    }
+
+    pub fn parse_relation(&mut self) -> ParseResult<Relation> {
+        let lhs = self.parse_expr()?;
+        let op = self.expect_relop()?;
+        let rhs = self.parse_expr()?;
+
+        Ok(Relation { lhs, rhs, op })
+    }
+
+    pub fn parse_term(&mut self) -> ParseResult<Term> {
+        let root = self.parse_factor()?;
+        let mut ops = vec![];
+
+        while let Some(op) = self.consume_factorop_if_exists() {
+            let next = self.parse_factor()?;
+            ops.push((op, next))
+        }
+
+        Ok(Term { root, ops })
     }
 
     fn advance(&mut self) -> Option<TokenResult> {
@@ -110,4 +164,8 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
             _ => None,
         }
     }
+}
+
+mod tests {
+
 }

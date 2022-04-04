@@ -3,9 +3,10 @@ pub(crate) mod parser;
 pub(crate) mod scanner;
 
 use std::{ffi::OsString, fs::File, io::Read};
-use clap::Parser;
+use clap::Parser as ArgParse;
+use self::parser::Parser;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
 struct Config {
     #[clap(help = "The source file to compile")]
@@ -30,8 +31,8 @@ where
 
     let tokens = scanner::tokenize(&input);
 
-    match parser::parse(tokens) {
+    match Parser::new(tokens).parse_computation() {
         Ok(ast) => println!("{:?}", ast),
         Err(_) => eprintln!("parse error"),
-    }
+    };
 }
