@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 use crate::tok::RelOp;
 
+/* DECLARATIONS */
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Computation {
     pub vars: Vec<VarDecl>,
@@ -9,58 +11,17 @@ pub struct Computation {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct VarDecl;
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct FuncDecl;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block;
+pub struct VarDecl;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Relation {
-    pub lhs: Expr,
-    pub rhs: Expr,
-    pub op: RelOp,
-}
+/* EXPRESSIONS */
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
     pub root: Term,
     pub ops: Vec<(TermOp, Term)>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Term {
-    pub root: Factor,
-    pub ops: Vec<(FactorOp, Factor)>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum TermOp {
-    Add,
-    Sub,
-}
-
-impl TryFrom<char> for TermOp {
-    type Error = char;
-
-    fn try_from(c: char) -> Result<TermOp, char> {
-        match c {
-            '+' => Ok(TermOp::Add),
-            '-' => Ok(TermOp::Sub),
-            other => Err(other),
-        }
-    }
-}
-
-impl From<TermOp> for char {
-    fn from(op: TermOp) -> char {
-        match op {
-            TermOp::Add => '+',
-            TermOp::Sub => '-',
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -97,6 +58,51 @@ impl From<FactorOp> for char {
         }
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Relation {
+    pub lhs: Expr,
+    pub rhs: Expr,
+    pub op: RelOp,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Term {
+    pub root: Factor,
+    pub ops: Vec<(FactorOp, Factor)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TermOp {
+    Add,
+    Sub,
+}
+
+impl TryFrom<char> for TermOp {
+    type Error = char;
+
+    fn try_from(c: char) -> Result<TermOp, char> {
+        match c {
+            '+' => Ok(TermOp::Add),
+            '-' => Ok(TermOp::Sub),
+            other => Err(other),
+        }
+    }
+}
+
+impl From<TermOp> for char {
+    fn from(op: TermOp) -> char {
+        match op {
+            TermOp::Add => '+',
+            TermOp::Sub => '-',
+        }
+    }
+}
+
+/* STATEMENTS */
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Block;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncCall;
