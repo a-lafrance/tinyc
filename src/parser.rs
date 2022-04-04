@@ -169,11 +169,15 @@ mod tests {
     use super::*;
     use crate::tok::Token;
 
+    fn stream_from_tokens(tokens: Vec<Token>) -> impl Iterator<Item = TokenResult> {
+        tokens.into_iter().map(|tok| Ok(tok))
+    }
+
     #[test]
-    fn expr_parse_single_term() {
+    fn parse_expr_single_term() {
         let n = 5;
-        let tokens = vec![Ok(Token::Number(n))];
-        let mut parser = Parser::new(tokens.into_iter());
+        let tokens = stream_from_tokens(vec![Token::Number(n)]);
+        let mut parser = Parser::new(tokens);
 
         assert_eq!(parser.parse_expr(), Ok(Expr {
             root: Term {
@@ -185,16 +189,16 @@ mod tests {
     }
 
     #[test]
-    fn expr_parse_two_terms() {
+    fn parse_expr_two_terms() {
         let n = 5;
         let m = 6;
         let op = TermOp::Add;
-        let tokens = vec![
-            Ok(Token::Number(n)),
-            Ok(Token::Punctuation(op.into())),
-            Ok(Token::Number(m)),
-        ];
-        let mut parser = Parser::new(tokens.into_iter());
+        let tokens = stream_from_tokens(vec![
+            Token::Number(n),
+            Token::Punctuation(op.into()),
+            Token::Number(m),
+        ]);
+        let mut parser = Parser::new(tokens);
 
         assert_eq!(parser.parse_expr(), Ok(Expr {
             root: Term {
@@ -211,20 +215,20 @@ mod tests {
     }
 
     #[test]
-    fn expr_parse_many_terms() {
+    fn parse_expr_many_terms() {
         let x = 5;
         let y = 6;
         let z = 7;
         let op1 = TermOp::Add;
         let op2 = TermOp::Sub;
-        let tokens = vec![
-            Ok(Token::Number(x)),
-            Ok(Token::Punctuation(op1.into())),
-            Ok(Token::Number(y)),
-            Ok(Token::Punctuation(op2.into())),
-            Ok(Token::Number(z)),
-        ];
-        let mut parser = Parser::new(tokens.into_iter());
+        let tokens = stream_from_tokens(vec![
+            Token::Number(x),
+            Token::Punctuation(op1.into()),
+            Token::Number(y),
+            Token::Punctuation(op2.into()),
+            Token::Number(z),
+        ]);
+        let mut parser = Parser::new(tokens);
 
         assert_eq!(parser.parse_expr(), Ok(Expr {
             root: Term {
@@ -242,5 +246,50 @@ mod tests {
                 }),
             ],
         }));
+    }
+
+    #[test]
+    fn parse_factor_var_ref() {
+        let ident = "asg".to_string();
+        let tokens = stream_from_tokens(vec![Token::Ident(ident.clone())]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_factor(), Ok(Factor::VarRef(ident)));
+    }
+
+    #[test]
+    fn parse_factor_number() {
+        let n = 5;
+        let tokens = stream_from_tokens(vec![Token::Number(n)]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_factor(), Ok(Factor::Number(n)));
+    }
+
+    #[test]
+    fn parse_factor_subexpr() {
+        let n = 5;
+        let tokens = stream_from_tokens(vec![
+            Token::Punctuation('('),
+            Token::Number(n),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_factor(), Ok(Factor::SubExpr(
+            Box::new(Expr {
+                root: Term {
+                    root: Factor::Number(n),
+                    ops: vec![],
+                },
+                ops: vec![],
+            })
+        )));
+    }
+
+    #[test]
+    #[ignore]
+    fn parse_factor_func_call() {
+        todo!();
     }
 }
