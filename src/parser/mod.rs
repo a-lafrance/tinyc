@@ -1,7 +1,7 @@
 mod astparse;
 
 use crate::{
-    ast::{Computation, Relation},
+    ast::{Computation, FactorOp, Relation, TermOp},
     scanner::{
         tok::{RelOp, Token},
         TokenResult,
@@ -44,6 +44,38 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
             }
 
             _ => Err(()),
+        }
+    }
+
+    pub fn consume_termop_if_exists(&mut self) -> Option<TermOp> {
+        match self.current {
+            Some(Ok(Token::Punctuation('+'))) => {
+                self.advance();
+                Some(TermOp::Add)
+            }
+
+            Some(Ok(Token::Punctuation('-'))) => {
+                self.advance();
+                Some(TermOp::Sub)
+            }
+
+            _ => None,
+        }
+    }
+
+    pub fn consume_factorop_if_exists(&mut self) -> Option<FactorOp> {
+        match self.current {
+            Some(Ok(Token::Punctuation('*'))) => {
+                self.advance();
+                Some(FactorOp::Mul)
+            }
+
+            Some(Ok(Token::Punctuation('/'))) => {
+                self.advance();
+                Some(FactorOp::Div)
+            }
+
+            _ => None,
         }
     }
 }

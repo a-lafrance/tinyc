@@ -25,17 +25,16 @@ pub struct Relation {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct OpChain<Operand, Operation>
-where
-    Operand: Clone + Debug + Parse + PartialEq,
-    Operation: Clone + Debug + Parse + PartialEq,
-{
-    pub root: Operand,
-    pub ops: Vec<(Operation, Operand)>,
+pub struct Expr {
+    pub root: Term,
+    pub ops: Vec<(TermOp, Term)>,
 }
 
-pub type Expr = OpChain<Term, TermOp>;
-pub type Term = OpChain<Factor, FactorOp>;
+#[derive(Clone, Debug, PartialEq)]
+pub struct Term {
+    pub root: Factor,
+    pub ops: Vec<(FactorOp, Factor)>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TermOp {
