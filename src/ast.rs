@@ -111,4 +111,7 @@ pub struct Assignment {
 pub struct Block;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FuncCall;
+pub struct FuncCall {
+    pub name: String,
+    pub args: Vec<Expr>,
+}

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Assignment, Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
+    ast::{Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
     scanner::TokenResult,
     tok::{RelOp, Token},
 };
@@ -23,25 +23,27 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.current.as_ref()
     }
 
-    pub fn parse_computation(&mut self) -> ParseResult<Computation> {
+    pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
+        if self.expect_keyword("let") {
+            let place = self.consume_ident_if_exists().ok_or(())?;
+
+            if self.expect_assign_op() {
+                let value = self.parse_expr()?;
+                Ok(Assignment { place, value })
+            } else {
+                Err(())
+            }
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn parse_block(&mut self) -> ParseResult<Block> {
         todo!()
     }
 
-    pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
-        match self.consume_ident_if_exists() {
-            Some(keyword) if keyword == "let" => {
-                let place = self.consume_ident_if_exists().ok_or(())?;
-
-                if self.expect_assign_op() {
-                    let value = self.parse_expr()?;
-                    Ok(Assignment { place, value })
-                } else {
-                    Err(())
-                }
-            },
-            _ => Err(()),
-        }
-
+    pub fn parse_computation(&mut self) -> ParseResult<Computation> {
+        todo!()
     }
 
     pub fn parse_expr(&mut self) -> ParseResult<Expr> {
@@ -68,17 +70,35 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         } else if let Some(n) = self.consume_number_if_exists() {
             Ok(Factor::Number(n))
         } else {
-            // TODO: don't consume call here
-            match self.consume_ident_if_exists() {
+            match self.peek_ident_if_exists() {
                 Some(call_keyword) if call_keyword == "call" => Ok(Factor::Call(self.parse_func_call()?)),
-                Some(ident) => Ok(Factor::VarRef(ident)),
+                Some(_) => Ok(Factor::VarRef(self.consume_ident_if_exists().unwrap())),
                 None => Err(()),
             }
         }
     }
 
     pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
-        todo!()
+        if self.expect_keyword("call") {
+            let name = self.consume_ident_if_exists().ok_or(())?;
+            let mut args = vec![];
+
+            if self.expect_punctuation_matching('(') {
+                if !self.expect_punctuation_matching(')') {
+                    // parse first arg
+                    args.push(self.parse_expr()?);
+
+                    while !self.expect_punctuation_matching(')') {
+                        self.expect_punctuation_matching(',');
+                        args.push(self.parse_expr()?);
+                    }
+                }
+            }
+
+            Ok(FuncCall { name, args })
+        } else {
+            Err(())
+        }
     }
 
     pub fn parse_relation(&mut self) -> ParseResult<Relation> {
@@ -111,6 +131,16 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     pub fn expect_assign_op(&mut self) -> bool {
         match self.current {
             Some(Ok(Token::AssignOp)) => {
+                self.advance();
+                true
+            },
+            _ => false,
+        }
+    }
+
+    pub fn expect_keyword<K: AsRef<str>>(&mut self, keyword: K) -> bool {
+        match self.peek_ident_if_exists() {
+            Some(ident) if ident == keyword.as_ref() => {
                 self.advance();
                 true
             },
@@ -379,9 +409,170 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn parse_factor_func_call() {
-        todo!();
+        let func = "double".to_string();
+        let arg = 5;
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident(func.clone()),
+            Token::Punctuation('('),
+            Token::Number(arg),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_factor(), Ok(Factor::Call(
+            FuncCall {
+                name: func,
+                args: vec![Expr {
+                    root: Term {
+                        root: Factor::Number(arg),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                }],
+            }
+        )));
+    }
+
+    #[test]
+    fn parse_func_call_no_args_no_parens() {
+        // call run
+        let func = "run".to_string();
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident(func.clone()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_func_call(), Ok(FuncCall {
+            name: func,
+            args: vec![],
+        }));
+    }
+
+    #[test]
+    fn parse_func_call_no_args_with_parens() {
+        // call run()
+        let func = "run".to_string();
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident(func.clone()),
+            Token::Punctuation('('),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_func_call(), Ok(FuncCall {
+            name: func,
+            args: vec![],
+        }));
+    }
+
+    #[test]
+    fn parse_func_call_one_arg() {
+        // call square(3)
+        let func = "square".to_string();
+        let arg = 3;
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident(func.clone()),
+            Token::Punctuation('('),
+            Token::Number(arg),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_func_call(), Ok(FuncCall {
+            name: func,
+            args: vec![Expr {
+                root: Term {
+                    root: Factor::Number(arg),
+                    ops: vec![],
+                },
+                ops: vec![],
+            }],
+        }));
+    }
+
+    #[test]
+    fn parse_func_call_two_args() {
+        // call add(x, y)
+        let func = "add".to_string();
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident(func.clone()),
+            Token::Punctuation('('),
+            Token::Ident("x".to_string()),
+            Token::Punctuation(','),
+            Token::Ident("y".to_string()),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_func_call(), Ok(FuncCall {
+            name: func,
+            args: vec![
+                Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                Expr {
+                    root: Term {
+                        root: Factor::VarRef("y".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+            ],
+        }));
+    }
+
+    #[test]
+    fn parse_func_call_many_args() {
+        // call max(x, y, 5)
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("call".to_string()),
+            Token::Ident("max".to_string()),
+            Token::Punctuation('('),
+            Token::Ident("x".to_string()),
+            Token::Punctuation(','),
+            Token::Ident("y".to_string()),
+            Token::Punctuation(','),
+            Token::Number(5),
+            Token::Punctuation(')'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_func_call(), Ok(FuncCall {
+            name: "max".to_string(),
+            args: vec![
+                Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                Expr {
+                    root: Term {
+                        root: Factor::VarRef("y".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                Expr {
+                    root: Term {
+                        root: Factor::Number(5),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+            ],
+        }));
     }
 
     #[test]
