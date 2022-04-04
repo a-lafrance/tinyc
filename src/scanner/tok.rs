@@ -21,6 +21,7 @@ impl Display for Token {
     }
 }
 
+// TODO: move to different place?
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RelOp {
     Eq,

@@ -41,14 +41,15 @@ impl<'a> Cursor<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.consume_next_if(|c| c.is_ascii_whitespace()).is_some() { }
+        while self.consume_next_if(|c| c.is_ascii_whitespace()).is_some() {}
     }
 
     pub fn advance(&mut self) -> Option<TokenResult> {
         self.skip_whitespace();
         let first = self.peek()?;
 
-        let tok = self.read_number()
+        let tok = self
+            .read_number()
             .or_else(|| self.read_ident().map(Ok))
             .unwrap_or_else(move || {
                 if self.consume_next_if(|c| c == '>').is_some() {
@@ -73,18 +74,19 @@ impl<'a> Cursor<'a> {
                     self.relop_if_eq_sign(first, RelOp::Eq)
                 } else if self.consume_next_if(|c| c == '!').is_some() {
                     self.relop_if_eq_sign(first, RelOp::Ne)
-                } else if let Some(c) = self.consume_next_if(|c| c == '+'
-                    || c == '-'
-                    || c == '*'
-                    || c == '/'
-                    || c == '('
-                    || c == ')'
-                    || c == ','
-                    || c == '{'
-                    || c == '}'
-                    || c == ';'
-                    || c == '.')
-                {
+                } else if let Some(c) = self.consume_next_if(|c| {
+                    c == '+'
+                        || c == '-'
+                        || c == '*'
+                        || c == '/'
+                        || c == '('
+                        || c == ')'
+                        || c == ','
+                        || c == '{'
+                        || c == '}'
+                        || c == ';'
+                        || c == '.'
+                }) {
                     // punctuation
                     Ok(Token::Punctuation(c))
                 } else {
@@ -119,7 +121,10 @@ impl<'a> Cursor<'a> {
         let mut n = 0;
         let mut found_digit = false;
 
-        while let Some(d) = self.consume_next_if(|c| c.is_ascii_digit()).and_then(|c| c.to_digit(10)) {
+        while let Some(d) = self
+            .consume_next_if(|c| c.is_ascii_digit())
+            .and_then(|c| c.to_digit(10))
+        {
             n = 10 * n + d;
             found_digit = true;
         }
@@ -144,7 +149,6 @@ impl<'a> Cursor<'a> {
     }
 }
 
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidCharError(char);
 
@@ -154,17 +158,13 @@ impl Display for InvalidCharError {
     }
 }
 
-impl Error for InvalidCharError { }
-
+impl Error for InvalidCharError {}
 
 pub fn tokenize(input: &str) -> impl Iterator<Item = TokenResult> + '_ {
     let mut cursor = Cursor::new(input);
 
-    iter::from_fn(move || {
-        cursor.advance()
-    })
+    iter::from_fn(move || cursor.advance())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -186,49 +186,52 @@ mod tests {
             }.
         ";
 
-        assert_eq!(tokenize(input).try_collect::<Vec<_>>(), Ok(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("var".to_string()),
-            Token::Ident("a".to_string()),
-            Token::Punctuation(','),
-            Token::Ident("b".to_string()),
-            Token::Punctuation(';'),
-            Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
-            Token::Ident("a".to_string()),
-            Token::AssignOp,
-            Token::Number(1),
-            Token::Punctuation('*'),
-            Token::Number(2),
-            Token::Punctuation('+'),
-            Token::Number(3),
-            Token::Punctuation(';'),
-            Token::Ident("if".to_string()),
-            Token::Ident("a".to_string()),
-            Token::RelOp(RelOp::Gt),
-            Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
-            Token::Ident("b".to_string()),
-            Token::AssignOp,
-            Token::Ident("a".to_string()),
-            Token::Punctuation('*'),
-            Token::Number(2),
-            Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
-            Token::Ident("b".to_string()),
-            Token::AssignOp,
-            Token::Ident("a".to_string()),
-            Token::Punctuation('/'),
-            Token::Number(2),
-            Token::Punctuation('-'),
-            Token::Number(1),
-            Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
-            Token::Punctuation(';'),
-            Token::Punctuation('}'),
-            Token::Punctuation('.'),
-        ]));
+        assert_eq!(
+            tokenize(input).try_collect::<Vec<_>>(),
+            Ok(vec![
+                Token::Ident("main".to_string()),
+                Token::Ident("var".to_string()),
+                Token::Ident("a".to_string()),
+                Token::Punctuation(','),
+                Token::Ident("b".to_string()),
+                Token::Punctuation(';'),
+                Token::Punctuation('{'),
+                Token::Ident("let".to_string()),
+                Token::Ident("a".to_string()),
+                Token::AssignOp,
+                Token::Number(1),
+                Token::Punctuation('*'),
+                Token::Number(2),
+                Token::Punctuation('+'),
+                Token::Number(3),
+                Token::Punctuation(';'),
+                Token::Ident("if".to_string()),
+                Token::Ident("a".to_string()),
+                Token::RelOp(RelOp::Gt),
+                Token::Number(0),
+                Token::Ident("then".to_string()),
+                Token::Ident("let".to_string()),
+                Token::Ident("b".to_string()),
+                Token::AssignOp,
+                Token::Ident("a".to_string()),
+                Token::Punctuation('*'),
+                Token::Number(2),
+                Token::Punctuation(';'),
+                Token::Ident("else".to_string()),
+                Token::Ident("let".to_string()),
+                Token::Ident("b".to_string()),
+                Token::AssignOp,
+                Token::Ident("a".to_string()),
+                Token::Punctuation('/'),
+                Token::Number(2),
+                Token::Punctuation('-'),
+                Token::Number(1),
+                Token::Punctuation(';'),
+                Token::Ident("fi".to_string()),
+                Token::Punctuation(';'),
+                Token::Punctuation('}'),
+                Token::Punctuation('.'),
+            ])
+        );
     }
 }
