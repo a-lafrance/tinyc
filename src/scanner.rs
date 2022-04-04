@@ -185,7 +185,7 @@ mod tests {
         ";
 
         assert_eq!(
-            tokenize(input).try_collect::<Vec<_>>(),
+            tokenize(input).collect::<Result<Vec<_>, _>>(),
             Ok(vec![
                 Token::Ident("main".to_string()),
                 Token::Ident("var".to_string()),

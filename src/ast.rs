@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use crate::tok::RelOp;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,6 +42,27 @@ pub enum TermOp {
     Sub,
 }
 
+impl TryFrom<char> for TermOp {
+    type Error = char;
+
+    fn try_from(c: char) -> Result<TermOp, char> {
+        match c {
+            '+' => Ok(TermOp::Add),
+            '-' => Ok(TermOp::Sub),
+            other => Err(other),
+        }
+    }
+}
+
+impl Into<char> for TermOp {
+    fn into(self) -> char {
+        match self {
+            TermOp::Add => '+',
+            TermOp::Sub => '-',
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Factor {
     VarRef(String),
@@ -53,6 +75,27 @@ pub enum Factor {
 pub enum FactorOp {
     Mul,
     Div,
+}
+
+impl TryFrom<char> for FactorOp {
+    type Error = char;
+
+    fn try_from(c: char) -> Result<FactorOp, char> {
+        match c {
+            '*' => Ok(FactorOp::Mul),
+            '/' => Ok(FactorOp::Div),
+            other => Err(other),
+        }
+    }
+}
+
+impl Into<char> for FactorOp {
+    fn into(self) -> char {
+        match self {
+            FactorOp::Mul => '*',
+            FactorOp::Div => '/',
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -164,6 +164,83 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::tok::Token;
 
+    #[test]
+    fn expr_parse_single_term() {
+        let n = 5;
+        let tokens = vec![Ok(Token::Number(n))];
+        let mut parser = Parser::new(tokens.into_iter());
+
+        assert_eq!(parser.parse_expr(), Ok(Expr {
+            root: Term {
+                root: Factor::Number(n),
+                ops: vec![],
+            },
+            ops: vec![],
+        }));
+    }
+
+    #[test]
+    fn expr_parse_two_terms() {
+        let n = 5;
+        let m = 6;
+        let op = TermOp::Add;
+        let tokens = vec![
+            Ok(Token::Number(n)),
+            Ok(Token::Punctuation(op.into())),
+            Ok(Token::Number(m)),
+        ];
+        let mut parser = Parser::new(tokens.into_iter());
+
+        assert_eq!(parser.parse_expr(), Ok(Expr {
+            root: Term {
+                root: Factor::Number(n),
+                ops: vec![],
+            },
+            ops: vec![
+                (op, Term {
+                    root: Factor::Number(m),
+                    ops: vec![],
+                }),
+            ],
+        }));
+    }
+
+    #[test]
+    fn expr_parse_many_terms() {
+        let x = 5;
+        let y = 6;
+        let z = 7;
+        let op1 = TermOp::Add;
+        let op2 = TermOp::Sub;
+        let tokens = vec![
+            Ok(Token::Number(x)),
+            Ok(Token::Punctuation(op1.into())),
+            Ok(Token::Number(y)),
+            Ok(Token::Punctuation(op2.into())),
+            Ok(Token::Number(z)),
+        ];
+        let mut parser = Parser::new(tokens.into_iter());
+
+        assert_eq!(parser.parse_expr(), Ok(Expr {
+            root: Term {
+                root: Factor::Number(x),
+                ops: vec![],
+            },
+            ops: vec![
+                (op1, Term {
+                    root: Factor::Number(y),
+                    ops: vec![],
+                }),
+                (op2, Term {
+                    root: Factor::Number(z),
+                    ops: vec![],
+                }),
+            ],
+        }));
+    }
 }
