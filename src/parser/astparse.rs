@@ -1,6 +1,6 @@
 use super::{Parse, ParseResult, TokenStream};
 use crate::{
-    ast::{Computation, Expr, Factor, FactorOp, Relation, Term, TermOp},
+    ast::{Computation, Expr, Factor, FactorOp, FuncCall, Relation, Term, TermOp},
     scanner::TokenResult,
 };
 use std::fmt::Debug;
@@ -26,6 +26,28 @@ impl Parse for Expr {
 }
 
 impl Parse for Factor {
+    fn parse(stream: &mut TokenStream<impl Iterator<Item = TokenResult>>) -> ParseResult<Self> {
+        if stream.expect_punctuation_matching('(') {
+            let subexpr = Box::new(Expr::parse(stream)?);
+
+            if stream.expect_punctuation_matching(')') {
+                Ok(Factor::SubExpr(subexpr))
+            } else {
+                Err(())
+            }
+        } else if let Some(n) = stream.consume_number_if_exists() {
+            Ok(Factor::Number(n))
+        } else {
+            match stream.consume_ident_if_exists() {
+                Some(call_keyword) if call_keyword == "call" => Ok(Factor::Call(FuncCall::parse(stream)?)),
+                Some(ident) => Ok(Factor::VarRef(ident)),
+                None => Err(()),
+            }
+        }
+    }
+}
+
+impl Parse for FuncCall {
     fn parse(stream: &mut TokenStream<impl Iterator<Item = TokenResult>>) -> ParseResult<Self> {
         todo!()
     }

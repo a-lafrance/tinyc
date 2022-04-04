@@ -43,10 +43,18 @@ pub enum TermOp {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Factor; // TODO
+pub enum Factor {
+    VarRef(String),
+    Number(u32),
+    SubExpr(Box<Expr>),
+    Call(FuncCall),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FactorOp {
     Mul,
     Div,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FuncCall;

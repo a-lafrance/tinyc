@@ -32,8 +32,11 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    fn advance(&mut self) {
+    fn advance(&mut self) -> Option<TokenResult> {
+        let prev = self.current.take();
         self.current = self.stream.next();
+
+        prev
     }
 
     pub fn expect_relop(&mut self) -> ParseResult<RelOp> {
@@ -47,6 +50,36 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
+    pub fn expect_punctuation_matching(&mut self, c: char) -> bool {
+        match self.current {
+            Some(Ok(Token::Punctuation(ch))) if ch == c => {
+                self.advance();
+                true
+            }
+
+            _ => false,
+        }
+    }
+
+    pub fn consume_number_if_exists(&mut self) -> Option<u32> {
+        match self.current {
+            Some(Ok(Token::Number(n))) => {
+                self.advance();
+                Some(n)
+            },
+            _ => None,
+        }
+    }
+
+    pub fn consume_ident_if_exists(&mut self) -> Option<String> {
+        match self.current {
+            Some(Ok(Token::Ident(_))) => match self.advance() {
+                Some(Ok(Token::Ident(ident))) => Some(ident),
+                _ => unreachable!(),
+            },
+            _ => None,
+        }
+    }
     pub fn consume_termop_if_exists(&mut self) -> Option<TermOp> {
         match self.current {
             Some(Ok(Token::Punctuation('+'))) => {
