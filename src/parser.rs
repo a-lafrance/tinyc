@@ -292,4 +292,88 @@ mod tests {
     fn parse_factor_func_call() {
         todo!();
     }
+
+    #[test]
+    fn parse_relation_simple() {
+        // a > 0
+        let var = "asg".to_string();
+        let n = 0;
+        let op = RelOp::Gt;
+        let tokens = stream_from_tokens(vec![
+            Token::Ident(var.clone()),
+            Token::RelOp(op),
+            Token::Number(n),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_relation(), Ok(Relation {
+            lhs: Expr {
+                root: Term {
+                    root: Factor::VarRef(var),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            rhs: Expr {
+                root: Term {
+                    root: Factor::Number(n),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            op,
+        }));
+    }
+
+    #[test]
+    fn parse_relation_complex() {
+        // first - 1 > (second + 1) * 2
+        let var1 = "first".to_string();
+        let var2 = "second".to_string();
+        let op = RelOp::Gt;
+        let tokens = stream_from_tokens(vec![
+            Token::Ident(var1.clone()),
+            Token::Punctuation('-'),
+            Token::Number(1),
+            Token::RelOp(op),
+            Token::Punctuation('('),
+            Token::Ident(var2.clone()),
+            Token::Punctuation('+'),
+            Token::Number(1),
+            Token::Punctuation(')'),
+            Token::Punctuation('*'),
+            Token::Number(2),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_relation(), Ok(Relation {
+            lhs: Expr {
+                root: Term {
+                    root: Factor::VarRef(var1),
+                    ops: vec![],
+                },
+                ops: vec![(TermOp::Sub, Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                })],
+            },
+            rhs: Expr {
+                root: Term {
+                    root: Factor::SubExpr(Box::new(Expr {
+                        root: Term {
+                            root: Factor::VarRef(var2),
+                            ops: vec![],
+                        },
+                        ops: vec![(TermOp::Add, Term {
+                            root: Factor::Number(1),
+                            ops: vec![],
+                        })],
+                    })),
+                    ops: vec![(FactorOp::Mul, Factor::Number(2))],
+                },
+                ops: vec![],
+            },
+            op,
+        }));
+    }
 }
