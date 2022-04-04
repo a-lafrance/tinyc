@@ -46,8 +46,8 @@ impl<'a> Cursor<'a> {
         self.skip_whitespace();
         let first = self.peek()?;
 
-        let tok = self.read_ident().map(|tok| Ok(tok))
-            .or(self.read_number())
+        let tok = self.read_number()
+            .or(self.read_ident().map(|tok| Ok(tok)))
             .unwrap_or_else(move || {
                 if self.consume_next_if(|c| c == '>').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
@@ -143,7 +143,7 @@ impl<'a> Cursor<'a> {
 }
 
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidCharError(char);
 
 impl Display for InvalidCharError {
@@ -155,9 +155,78 @@ impl Display for InvalidCharError {
 impl Error for InvalidCharError { }
 
 
-pub fn tokenize(input: &str) -> Result<Vec<Token>, InvalidCharError> {
+pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token, InvalidCharError>> + '_ {
     let mut cursor = Cursor::new(input);
+
     iter::from_fn(move || {
         cursor.advance()
-    }).try_collect()
+    })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scanner_sanity_check() {
+        let input = "
+            main
+            var a, b; {
+                let a <- 1 * 2 + 3;
+
+                if a > 0
+                then
+                    let b <- a * 2;
+                else
+                    let b <- a / 2 - 1;
+                fi;
+            }.
+        ";
+
+        assert_eq!(tokenize(input).try_collect::<Vec<_>>(), Ok(vec![
+            Token::Ident("main".to_string()),
+            Token::Ident("var".to_string()),
+            Token::Ident("a".to_string()),
+            Token::Punctuation(','),
+            Token::Ident("b".to_string()),
+            Token::Punctuation(';'),
+            Token::Punctuation('{'),
+            Token::Ident("let".to_string()),
+            Token::Ident("a".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Punctuation('*'),
+            Token::Number(2),
+            Token::Punctuation('+'),
+            Token::Number(3),
+            Token::Punctuation(';'),
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('*'),
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('/'),
+            Token::Number(2),
+            Token::Punctuation('-'),
+            Token::Number(1),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+            Token::Punctuation(';'),
+            Token::Punctuation('}'),
+            Token::Punctuation('.'),
+        ]));
+    }
 }
