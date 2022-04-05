@@ -101,7 +101,7 @@ impl<'a> Cursor<'a> {
         // if you hit anything else, end the token and return
         let mut ident = String::new();
 
-        while let Some(c) = self.consume_next_if(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        while let Some(c) = self.consume_next_if(|c| c.is_ascii_alphanumeric()) {
             ident.push(c);
         }
 
