@@ -1,5 +1,5 @@
-use std::convert::TryFrom;
 use crate::tok::RelOp;
+use std::convert::TryFrom;
 
 /* DECLARATIONS */
 
@@ -11,7 +11,13 @@ pub struct Computation {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FuncDecl;
+pub struct FuncDecl {
+    pub returns_void: bool,
+    pub name: String,
+    pub params: Vec<String>,
+    pub vars: Vec<VarDecl>,
+    pub body: Block,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarDecl {
@@ -112,6 +118,12 @@ pub struct Assignment {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub body: Vec<Stmt>,
+}
+
+impl Block {
+    pub fn empty() -> Block {
+        Block { body: vec![] }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

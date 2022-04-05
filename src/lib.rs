@@ -3,9 +3,9 @@ pub(crate) mod parser;
 pub(crate) mod scanner;
 pub(crate) mod tok;
 
-use std::{ffi::OsString, fs::File, io::Read};
-use clap::Parser as ArgParse;
 use self::parser::Parser;
+use clap::Parser as ArgParse;
+use std::{ffi::OsString, fs::File, io::Read};
 
 #[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
