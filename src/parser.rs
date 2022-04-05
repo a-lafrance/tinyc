@@ -1,14 +1,46 @@
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 use crate::{
     ast::{
         Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, FuncDecl, IfStmt, Loop,
         Relation, Return, Stmt, Term, TermOp, VarDecl,
     },
-    scanner::TokenResult,
+    scanner::{InvalidCharError, TokenResult},
     tok::{RelOp, Token},
 };
 
-pub type ParseResult<T> = Result<T, Cow<'static, str>>;
+pub type ParseResult<T> = Result<T, ParseError>;
+
+#[derive(Debug, PartialEq)]
+pub enum ParseError {
+    InvalidChar(InvalidCharError), // still TODO: scanner error propagation
+    ExpectedKeyword(Cow<'static, str>),
+    ExpectedIdentifier,
+    ExpectedStatement,
+    ExpectedPunctuation(char),
+    ExpectedAssignOp,
+    ExpectedRelOp,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ParseError::InvalidChar(e) => write!(f, "{}", e),
+            ParseError::ExpectedKeyword(kw) => write!(f, "expected keyword '{}'", kw),
+            ParseError::ExpectedIdentifier => write!(f, "expected identifier"),
+            ParseError::ExpectedStatement => write!(f, "expected statement"),
+            ParseError::ExpectedPunctuation(c) => write!(f, "expected '{}'", c),
+            ParseError::ExpectedAssignOp => write!(f, "expected '<-'"),
+            ParseError::ExpectedRelOp => write!(f, "expected relational operator: one of {}", RelOp::all_as_str()),
+        }
+    }
+}
+
+impl Error for ParseError { }
+
 
 pub struct Parser<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
@@ -28,18 +60,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
-        if self.expect_keyword("let") {
-            let place = self.consume_ident_if_exists()
-                .ok_or(Cow::from("expected identifier"))?;
+        self.expect_keyword_or_err("let")?;
+        let place = self.consume_ident_if_exists()?;
 
-            if self.expect_assign_op() {
-                let value = self.parse_expr()?;
-                Ok(Assignment { place, value })
-            } else {
-                Err(Cow::from("expected assignment operator '<-'"))
-            }
+        if self.expect_assign_op() {
+            let value = self.parse_expr()?;
+            Ok(Assignment { place, value })
         } else {
-            Err(Cow::from("expected keyword 'let'"))
+            Err(ParseError::ExpectedAssignOp)
         }
     }
 
@@ -77,13 +105,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         let body = self.parse_block()?;
 
-        if !self.expect_punctuation_matching('}') {
-            return Err(Cow::from("expected closing bracket '}'"));
-        }
-
-        if !self.expect_punctuation_matching('.') {
-            return Err(Cow::from("expected final delimiter '.'"));
-        }
+        self.expect_punctuation_or_err('}')?;
+        self.expect_punctuation_or_err('.')?;
 
         Ok(Computation { vars, funcs, body })
     }
@@ -104,11 +127,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         if self.expect_punctuation_matching('(') {
             let subexpr = Box::new(self.parse_expr()?);
 
-            if self.expect_punctuation_matching(')') {
-                Ok(Factor::SubExpr(subexpr))
-            } else {
-                Err(Cow::from("expected closing parethesis ')'"))
-            }
+            self.expect_punctuation_or_err(')')
+                .map(|_| Factor::SubExpr(subexpr))
         } else if let Some(n) = self.consume_number_if_exists() {
             Ok(Factor::Number(n))
         } else {
@@ -117,64 +137,51 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
                     Ok(Factor::Call(self.parse_func_call()?))
                 }
                 Some(_) => Ok(Factor::VarRef(self.consume_ident_if_exists().unwrap())),
-                None => Err(Cow::from("expected identifier")),
+                None => Err(ParseError::ExpectedIdentifier),
             }
         }
     }
 
     pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
-        if self.expect_keyword("call") {
-            let name = self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?;
-            let mut args = vec![];
+        self.expect_keyword_or_err("call")?;
+        let name = self.consume_ident_if_exists()?;
+        let mut args = vec![];
 
-            if self.expect_punctuation_matching('(') {
-                if !self.expect_punctuation_matching(')') {
-                    // parse first arg
+        if self.expect_punctuation_matching('(') {
+            if !self.expect_punctuation_matching(')') {
+                args.push(self.parse_expr()?);
+
+                while !self.expect_punctuation_matching(')') {
+                    self.expect_punctuation_matching(',');
                     args.push(self.parse_expr()?);
-
-                    while !self.expect_punctuation_matching(')') {
-                        self.expect_punctuation_matching(',');
-                        args.push(self.parse_expr()?);
-                    }
                 }
             }
-
-            Ok(FuncCall { name, args })
-        } else {
-            Err(Cow::from("expected keyword 'call'"))
         }
+
+        Ok(FuncCall { name, args })
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
         let returns_void = self.expect_keyword("void");
         self.expect_keyword_or_err("function")?;
-        let name = self.consume_ident_if_exists()
-            .ok_or(Cow::from("expected identifier"))?;
-
-        if !self.expect_punctuation_matching('(') {
-            return Err(Cow::from("expected '('"));
-        }
+        let name = self.consume_ident_if_exists()?;
+        self.expect_punctuation_or_err('(')?;
 
         let params = if self.expect_punctuation_matching(')') {
             vec![]
         } else {
-            let mut params = vec![self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?];
+            let mut params = vec![self.consume_ident_if_exists()?];
 
             while !self.expect_punctuation_matching(')') {
-                if !self.expect_punctuation_matching(',') {
-                    return Err(Cow::from("expected ','"));
-                }
+                self.expect_punctuation_or_err(',')?;
 
-                params.push(self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?);
+                params.push(self.consume_ident_if_exists()?);
             }
 
             params
         };
 
-        if !self.expect_punctuation_matching(';') {
-            return Err(Cow::from("expected ';'"));
-        }
-
+        self.expect_punctuation_or_err(';')?;
         let mut vars = vec![];
 
         while !self.expect_punctuation_matching('{') {
@@ -185,19 +192,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             Block::empty()
         } else {
             let body = self.parse_block()?;
-
-            if !self.expect_punctuation_matching('}') {
-                return Err(Cow::from("expected closing brace '}'"));
-            }
+            self.expect_punctuation_or_err('}')?;
 
             body
         };
 
-        if self.expect_punctuation_matching(';') {
-            Ok(FuncDecl { returns_void, name, params, vars, body })
-        } else {
-            Err(Cow::from("expected ';'"))
-        }
+        self.expect_punctuation_or_err(';')
+            .map(|_| FuncDecl { returns_void, name, params, vars, body })
     }
 
     pub fn parse_if_stmt(&mut self) -> ParseResult<IfStmt> {
@@ -255,7 +256,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             Some("if") => self.parse_if_stmt().map(|i| i.into()),
             Some("while") => self.parse_loop().map(|l| l.into()),
             Some("return") => self.parse_return().map(|r| r.into()),
-            _ => Err(Cow::from("expected statement")),
+            _ => Err(ParseError::ExpectedStatement),
         }
     }
 
@@ -273,14 +274,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
         self.expect_keyword_or_err("var")?;
-        let mut vars = vec![self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?];
+        let mut vars = vec![self.consume_ident_if_exists()?];
 
         while !self.expect_punctuation_matching(';') {
-            if !self.expect_punctuation_matching(',') {
-                return Err(Cow::from("expected ','"));
-            }
-
-            vars.push(self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?);
+            self.expect_punctuation_or_err(',')?;
+            vars.push(self.consume_ident_if_exists()?);
         }
 
         Ok(VarDecl { vars })
@@ -317,7 +315,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         if self.expect_keyword(keyword) {
             Ok(())
         } else {
-            Err(Cow::from(format!("expected keyword '{}'", keyword)))
+            Err(ParseError::ExpectedKeyword(Cow::from(keyword.to_string())))
         }
     }
 
@@ -328,7 +326,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
                 Ok(op)
             }
 
-            _ => Err(Cow::from("expected relational operator: one of '==', '!=', '>', '>=', '<', '<='")),
+            _ => Err(ParseError::ExpectedRelOp),
         }
     }
 
@@ -343,6 +341,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
+    pub fn expect_punctuation_or_err(&mut self, c: char) -> ParseResult<()> {
+        if self.expect_punctuation_matching(c) {
+            Ok(())
+        } else {
+            Err(ParseError::ExpectedPunctuation(c))
+        }
+    }
+
     pub fn consume_number_if_exists(&mut self) -> Option<u32> {
         match self.current {
             Some(Ok(Token::Number(n))) => {
@@ -353,13 +359,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn consume_ident_if_exists(&mut self) -> Option<String> {
+    pub fn consume_ident_if_exists(&mut self) -> ParseResult<String> {
         match self.current {
             Some(Ok(Token::Ident(_))) => match self.advance() {
-                Some(Ok(Token::Ident(ident))) => Some(ident),
+                Some(Ok(Token::Ident(ident))) => Ok(ident),
                 _ => unreachable!(),
             },
-            _ => None,
+            _ => Err(ParseError::ExpectedIdentifier),
         }
     }
 
