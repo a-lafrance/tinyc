@@ -1,0 +1,29 @@
+main
+var guess, target, outcome;
+
+function GetOutcome(guess, target);
+{
+    if guess == target
+    then
+        return 1;
+    else
+        if guess < target
+        then
+            return 0;
+        else
+            return 2;
+        fi;
+    fi;
+};
+
+{
+    let target <- 53;
+    let outcome <- 0;
+
+    while outcome != 1
+    do
+        let guess <- call InputNum();
+        let outcome <- call GetOutcome(guess, target);
+        call OutputNum(outcome);
+    od;
+}.
