@@ -144,3 +144,33 @@ pub enum Stmt {
     Loop(Loop),
     Return(Return),
 }
+
+impl From<Assignment> for Stmt {
+    fn from(assign: Assignment) -> Stmt {
+        Stmt::Assignment(assign)
+    }
+}
+
+impl From<FuncCall> for Stmt {
+    fn from(call: FuncCall) -> Stmt {
+        Stmt::FuncCall(call)
+    }
+}
+
+impl From<IfStmt> for Stmt {
+    fn from(if_stmt: IfStmt) -> Stmt {
+        Stmt::If(if_stmt)
+    }
+}
+
+impl From<Loop> for Stmt {
+    fn from(loop_stmt: Loop) -> Stmt {
+        Stmt::Loop(loop_stmt)
+    }
+}
+
+impl From<Return> for Stmt {
+    fn from(ret: Return) -> Stmt {
+        Stmt::Return(ret)
+    }
+}

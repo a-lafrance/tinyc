@@ -154,7 +154,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
-        todo!()
+        match self.peek_ident_if_exists() {
+            Some("let") => self.parse_assignment().map(|a| a.into()),
+            Some("call") => self.parse_func_call().map(|c| c.into()),
+            Some("if") => self.parse_if_stmt().map(|i| i.into()),
+            Some("while") => self.parse_loop().map(|l| l.into()),
+            Some("return") => self.parse_return().map(|r| r.into()),
+            _ => Err(()),
+        }
     }
 
     pub fn parse_term(&mut self) -> ParseResult<Term> {
