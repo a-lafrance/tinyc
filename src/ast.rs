@@ -14,7 +14,9 @@ pub struct Computation {
 pub struct FuncDecl;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct VarDecl;
+pub struct VarDecl {
+    pub vars: Vec<String>,
+}
 
 /* EXPRESSIONS */
 

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, IfStmt, Loop, Relation, Return, Stmt, Term, TermOp},
+    ast::{Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, IfStmt, Loop, Relation, Return, Stmt, Term, TermOp, VarDecl},
     scanner::TokenResult,
     tok::{RelOp, Token},
 };
@@ -174,6 +174,21 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
 
         Ok(Term { root, ops })
+    }
+
+    pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
+        self.expect_keyword_or_err("var")?;
+        let mut vars = vec![self.consume_ident_if_exists().ok_or(())?];
+
+        while !self.expect_punctuation_matching(';') {
+            if !self.expect_punctuation_matching(',') {
+                return Err(())
+            }
+
+            vars.push(self.consume_ident_if_exists().ok_or(())?);
+        }
+
+        Ok(VarDecl { vars })
     }
 
     fn advance(&mut self) -> Option<TokenResult> {
@@ -1857,6 +1872,38 @@ mod tests {
                 (op1, Factor::Number(y)),
                 (op2, Factor::Number(z)),
             ],
+        }));
+    }
+
+    #[test]
+    fn parse_var_decl_single_var() {
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("var".to_string()),
+            Token::Ident("asg".to_string()),
+            Token::Punctuation(';'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_var_decl(), Ok(VarDecl {
+            vars: vec!["asg".to_string()],
+        }));
+    }
+
+    #[test]
+    fn parse_var_decl_many_vars() {
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("var".to_string()),
+            Token::Ident("x".to_string()),
+            Token::Punctuation(','),
+            Token::Ident("y".to_string()),
+            Token::Punctuation(','),
+            Token::Ident("z".to_string()),
+            Token::Punctuation(';'),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_var_decl(), Ok(VarDecl {
+            vars: vec!["x".to_string(), "y".to_string(), "z".to_string()],
         }));
     }
 }
