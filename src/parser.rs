@@ -1639,6 +1639,64 @@ mod tests {
     }
 
     #[test]
+    fn parse_return_no_val() {
+        let tokens = stream_from_tokens(vec![Token::Ident("return".to_string())]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_return(), Ok(Return { value: None }));
+    }
+
+    #[test]
+    fn parse_return_with_val() {
+        // return a + 1
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("return".to_string()),
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Number(1),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_return(), Ok(Return {
+            value: Some(Expr {
+                root: Term {
+                    root: Factor::VarRef("a".to_string()),
+                    ops: vec![],
+                },
+                ops: vec![(TermOp::Add, Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                })],
+            }),
+        }));
+    }
+
+    #[test]
+    fn parse_return_as_stmt() {
+        // return a + 1
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("return".to_string()),
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Number(1),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_stmt(), Ok(Stmt::Return(Return {
+            value: Some(Expr {
+                root: Term {
+                    root: Factor::VarRef("a".to_string()),
+                    ops: vec![],
+                },
+                ops: vec![(TermOp::Add, Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                })],
+            }),
+        })));
+    }
+
+    #[test]
     fn parse_term_single_factor() {
         let n = 5;
         let tokens = stream_from_tokens(vec![Token::Number(n)]);
