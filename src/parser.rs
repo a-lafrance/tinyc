@@ -639,6 +639,700 @@ mod tests {
     }
 
     #[test]
+    fn parse_if_stmt_simple_then_no_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(1),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            },
+
+            else_block: None,
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_simple_then_simple_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1
+            else
+                let b <- 2;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(1),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            },
+
+            else_block: Some(Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(2),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            }),
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_simple_then_complex_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1;
+            else
+                let b <- 2;
+                let c <- a + b;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("let".to_string()),
+            Token::Ident("c".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Ident("b".to_string()),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(1),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            },
+
+            else_block: Some(Block {
+                body: vec![
+                    Stmt::Assignment(Assignment {
+                        place: "b".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::Number(2),
+                                ops: vec![],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                    Stmt::Assignment(Assignment {
+                        place: "c".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::VarRef("a".to_string()),
+                                ops: vec![],
+                            },
+                            ops: vec![(TermOp::Add, Term {
+                                root: Factor::VarRef("b".to_string()),
+                                ops: vec![],
+                            })],
+                        },
+                    }),
+                ],
+            }),
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_complex_then_no_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1;
+                let c <- a + b;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Punctuation(';'),
+            Token::Ident("let".to_string()),
+            Token::Ident("c".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Ident("b".to_string()),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![
+                    Stmt::Assignment(Assignment {
+                        place: "b".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::Number(1),
+                                ops: vec![],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                    Stmt::Assignment(Assignment {
+                        place: "c".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::VarRef("a".to_string()),
+                                ops: vec![],
+                            },
+                            ops: vec![(TermOp::Add, Term {
+                                root: Factor::VarRef("b".to_string()),
+                                ops: vec![],
+                            })],
+                        },
+                    }),
+                ],
+            },
+
+            else_block: None,
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_complex_then_simple_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1;
+                let c <- a + b;
+            else
+                let b <- 2;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Punctuation(';'),
+            Token::Ident("let".to_string()),
+            Token::Ident("c".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Ident("b".to_string()),
+            Token::Punctuation(';'),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![
+                    Stmt::Assignment(Assignment {
+                        place: "b".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::Number(1),
+                                ops: vec![],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                    Stmt::Assignment(Assignment {
+                        place: "c".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::VarRef("a".to_string()),
+                                ops: vec![],
+                            },
+                            ops: vec![(TermOp::Add, Term {
+                                root: Factor::VarRef("b".to_string()),
+                                ops: vec![],
+                            })],
+                        },
+                    }),
+                ],
+            },
+
+            else_block: Some(Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(2),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            }),
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_complex_then_complex_else() {
+        /*
+            if a > 0
+            then
+                let b <- 1;
+                let c <- a + b;
+            else
+                let b <- 2;
+                let c <- a * 2;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Punctuation(';'),
+            Token::Ident("let".to_string()),
+            Token::Ident("c".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Ident("b".to_string()),
+            Token::Punctuation(';'),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("let".to_string()),
+            Token::Ident("c".to_string()),
+            Token::AssignOp,
+            Token::Ident("a".to_string()),
+            Token::Punctuation('*'),
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![
+                    Stmt::Assignment(Assignment {
+                        place: "b".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::Number(1),
+                                ops: vec![],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                    Stmt::Assignment(Assignment {
+                        place: "c".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::VarRef("a".to_string()),
+                                ops: vec![],
+                            },
+                            ops: vec![(TermOp::Add, Term {
+                                root: Factor::VarRef("b".to_string()),
+                                ops: vec![],
+                            })],
+                        },
+                    }),
+                ],
+            },
+
+            else_block: Some(Block {
+                body: vec![
+                    Stmt::Assignment(Assignment {
+                        place: "b".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::Number(2),
+                                ops: vec![],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                    Stmt::Assignment(Assignment {
+                        place: "c".to_string(),
+                        value: Expr {
+                            root: Term {
+                                root: Factor::VarRef("a".to_string()),
+                                ops: vec![(FactorOp::Mul, Factor::Number(2))],
+                            },
+                            ops: vec![],
+                        },
+                    }),
+                ],
+            }),
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_complex_condition() {
+        /*
+            if a + 1 > b * 2 + c
+            then
+                let result <- 0;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::Punctuation('+'),
+            Token::Number(1),
+            Token::RelOp(RelOp::Gt),
+            Token::Ident("b".to_string()),
+            Token::Punctuation('*'),
+            Token::Number(2),
+            Token::Punctuation('+'),
+            Token::Ident("c".to_string()),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("result".to_string()),
+            Token::AssignOp,
+            Token::Number(0),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_if_stmt(), Ok(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![(TermOp::Add, Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    })],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("b".to_string()),
+                        ops: vec![(FactorOp::Mul, Factor::Number(2))],
+                    },
+                    ops: vec![(TermOp::Add, Term {
+                        root: Factor::VarRef("c".to_string()),
+                        ops: vec![],
+                    })],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "result".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(0),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            },
+
+            else_block: None,
+        }));
+    }
+
+    #[test]
+    fn parse_if_stmt_as_stmt() {
+        /*
+            if a > 0
+            then
+                let b <- 1;
+            else
+                let b <- 2;
+            fi
+        */
+
+        let tokens = stream_from_tokens(vec![
+            Token::Ident("if".to_string()),
+            Token::Ident("a".to_string()),
+            Token::RelOp(RelOp::Gt),
+            Token::Number(0),
+            Token::Ident("then".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(1),
+            Token::Ident("else".to_string()),
+            Token::Ident("let".to_string()),
+            Token::Ident("b".to_string()),
+            Token::AssignOp,
+            Token::Number(2),
+            Token::Punctuation(';'),
+            Token::Ident("fi".to_string()),
+        ]);
+        let mut parser = Parser::new(tokens);
+
+        assert_eq!(parser.parse_stmt(), Ok(Stmt::If(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("a".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(0),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Gt,
+            },
+
+            then_block: Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(1),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            },
+
+            else_block: Some(Block {
+                body: vec![Stmt::Assignment(Assignment {
+                    place: "b".to_string(),
+                    value: Expr {
+                        root: Term {
+                            root: Factor::Number(2),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    },
+                })],
+            }),
+        })));
+    }
+
+    #[test]
     fn parse_relation_simple() {
         // a > 0
         let var = "asg".to_string();
