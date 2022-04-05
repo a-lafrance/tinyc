@@ -34,6 +34,6 @@ where
 
     match Parser::new(tokens).parse_computation() {
         Ok(ast) => println!("{:?}", ast),
-        Err(_) => eprintln!("parse error"),
+        Err(e) => eprintln!("parse error: {}", e),
     };
 }

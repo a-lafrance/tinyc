@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::{
     ast::{
         Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, FuncDecl, IfStmt, Loop,
@@ -7,7 +8,7 @@ use crate::{
     tok::{RelOp, Token},
 };
 
-pub type ParseResult<T> = Result<T, ()>;
+pub type ParseResult<T> = Result<T, Cow<'static, str>>;
 
 pub struct Parser<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
@@ -28,16 +29,17 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
         if self.expect_keyword("let") {
-            let place = self.consume_ident_if_exists().ok_or(())?;
+            let place = self.consume_ident_if_exists()
+                .ok_or(Cow::from("expected identifier"))?;
 
             if self.expect_assign_op() {
                 let value = self.parse_expr()?;
                 Ok(Assignment { place, value })
             } else {
-                Err(())
+                Err(Cow::from("expected assignment operator '<-'"))
             }
         } else {
-            Err(())
+            Err(Cow::from("expected keyword 'let'"))
         }
     }
 
@@ -76,11 +78,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let body = self.parse_block()?;
 
         if !self.expect_punctuation_matching('}') {
-            return Err(());
+            return Err(Cow::from("expected closing bracket '}'"));
         }
 
         if !self.expect_punctuation_matching('.') {
-            return Err(());
+            return Err(Cow::from("expected final delimiter '.'"));
         }
 
         Ok(Computation { vars, funcs, body })
@@ -105,7 +107,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             if self.expect_punctuation_matching(')') {
                 Ok(Factor::SubExpr(subexpr))
             } else {
-                Err(())
+                Err(Cow::from("expected closing parethesis ')'"))
             }
         } else if let Some(n) = self.consume_number_if_exists() {
             Ok(Factor::Number(n))
@@ -115,14 +117,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
                     Ok(Factor::Call(self.parse_func_call()?))
                 }
                 Some(_) => Ok(Factor::VarRef(self.consume_ident_if_exists().unwrap())),
-                None => Err(()),
+                None => Err(Cow::from("expected identifier")),
             }
         }
     }
 
     pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
         if self.expect_keyword("call") {
-            let name = self.consume_ident_if_exists().ok_or(())?;
+            let name = self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?;
             let mut args = vec![];
 
             if self.expect_punctuation_matching('(') {
@@ -139,37 +141,38 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
             Ok(FuncCall { name, args })
         } else {
-            Err(())
+            Err(Cow::from("expected keyword 'call'"))
         }
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
         let returns_void = self.expect_keyword("void");
         self.expect_keyword_or_err("function")?;
-        let name = self.consume_ident_if_exists().ok_or(())?;
+        let name = self.consume_ident_if_exists()
+            .ok_or(Cow::from("expected identifier"))?;
 
         if !self.expect_punctuation_matching('(') {
-            return Err(());
+            return Err(Cow::from("expected '('"));
         }
 
         let params = if self.expect_punctuation_matching(')') {
             vec![]
         } else {
-            let mut params = vec![self.consume_ident_if_exists().ok_or(())?];
+            let mut params = vec![self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?];
 
             while !self.expect_punctuation_matching(')') {
                 if !self.expect_punctuation_matching(',') {
-                    return Err(());
+                    return Err(Cow::from("expected ','"));
                 }
 
-                params.push(self.consume_ident_if_exists().ok_or(())?);
+                params.push(self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?);
             }
 
             params
         };
 
         if !self.expect_punctuation_matching(';') {
-            return Err(());
+            return Err(Cow::from("expected ';'"));
         }
 
         let mut vars = vec![];
@@ -184,7 +187,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             let body = self.parse_block()?;
 
             if !self.expect_punctuation_matching('}') {
-                return Err(());
+                return Err(Cow::from("expected closing brace '}'"));
             }
 
             body
@@ -193,7 +196,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         if self.expect_punctuation_matching(';') {
             Ok(FuncDecl { returns_void, name, params, vars, body })
         } else {
-            Err(())
+            Err(Cow::from("expected ';'"))
         }
     }
 
@@ -252,7 +255,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             Some("if") => self.parse_if_stmt().map(|i| i.into()),
             Some("while") => self.parse_loop().map(|l| l.into()),
             Some("return") => self.parse_return().map(|r| r.into()),
-            _ => Err(()),
+            _ => Err(Cow::from("expected statement")),
         }
     }
 
@@ -270,14 +273,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
         self.expect_keyword_or_err("var")?;
-        let mut vars = vec![self.consume_ident_if_exists().ok_or(())?];
+        let mut vars = vec![self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?];
 
         while !self.expect_punctuation_matching(';') {
             if !self.expect_punctuation_matching(',') {
-                return Err(());
+                return Err(Cow::from("expected ','"));
             }
 
-            vars.push(self.consume_ident_if_exists().ok_or(())?);
+            vars.push(self.consume_ident_if_exists().ok_or(Cow::from("expected identifier"))?);
         }
 
         Ok(VarDecl { vars })
@@ -300,9 +303,9 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn expect_keyword<K: AsRef<str>>(&mut self, keyword: K) -> bool {
+    pub fn expect_keyword(&mut self, keyword: &str) -> bool {
         match self.peek_ident_if_exists() {
-            Some(ident) if ident == keyword.as_ref() => {
+            Some(ident) if ident == keyword => {
                 self.advance();
                 true
             }
@@ -310,11 +313,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn expect_keyword_or_err<K: AsRef<str>>(&mut self, keyword: K) -> ParseResult<()> {
+    pub fn expect_keyword_or_err(&mut self, keyword: &str) -> ParseResult<()> {
         if self.expect_keyword(keyword) {
             Ok(())
         } else {
-            Err(())
+            Err(Cow::from(format!("expected keyword '{}'", keyword)))
         }
     }
 
@@ -325,7 +328,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
                 Ok(op)
             }
 
-            _ => Err(()),
+            _ => Err(Cow::from("expected relational operator: one of '==', '!=', '>', '>=', '<', '<='")),
         }
     }
 

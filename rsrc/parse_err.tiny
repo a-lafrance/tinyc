@@ -1,0 +1,6 @@
+main
+var a;
+
+{
+    let a = 5;
+}.
