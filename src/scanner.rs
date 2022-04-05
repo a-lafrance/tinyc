@@ -152,7 +152,7 @@ pub struct InvalidCharError(char);
 
 impl Display for InvalidCharError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "error: invalid character '{}'", self.0)
+        write!(f, "invalid character '{}'", self.0)
     }
 }
 
