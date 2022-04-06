@@ -2,11 +2,11 @@ use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     iter,
-    str::Chars,
+    str::{Chars, FromStr},
 };
 use crate::{
     tok::Token,
-    utils::RelOp,
+    utils::{Keyword, RelOp},
 };
 
 pub type TokenResult = Result<Token, InvalidCharError>;
@@ -51,7 +51,7 @@ impl<'a> Cursor<'a> {
 
         let tok = self
             .read_number()
-            .or_else(|| self.read_ident().map(Ok))
+            .or_else(|| self.read_ident_or_keyword().map(Ok))
             .unwrap_or_else(move || {
                 if self.consume_next_if(|c| c == '>').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
@@ -99,7 +99,7 @@ impl<'a> Cursor<'a> {
         Some(tok)
     }
 
-    fn read_ident(&mut self) -> Option<Token> {
+    fn read_ident_or_keyword(&mut self) -> Option<Token> {
         // read letters and digits
         // if you hit anything else, end the token and return
         let mut ident = String::new();
@@ -110,6 +110,8 @@ impl<'a> Cursor<'a> {
 
         if ident.is_empty() {
             None
+        } else if let Ok(kw) = Keyword::from_str(&ident) {
+            Some(Token::Keyword(kw))
         } else {
             Some(Token::Ident(ident))
         }

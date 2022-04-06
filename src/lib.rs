@@ -5,9 +5,10 @@ pub(crate) mod tok;
 pub(crate) mod utils;
 
 use self::parser::Parser;
+use clap::Parser as ArgParse;
 use std::{ffi::OsString, fs::File, io::Read};
 
-#[derive(Debug, clap::Parser)]
+#[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
 struct Config {
     #[clap(help = "The source file to compile")]

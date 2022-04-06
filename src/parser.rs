@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     error::Error,
     fmt::{self, Display, Formatter},
 };
@@ -10,7 +9,7 @@ use crate::{
     },
     scanner::{InvalidCharError, TokenResult},
     tok::Token,
-    utils::RelOp,
+    utils::{Keyword, RelOp},
 };
 
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -18,7 +17,7 @@ pub type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
     InvalidChar(InvalidCharError), // still TODO: scanner error propagation
-    ExpectedKeyword(Cow<'static, str>),
+    ExpectedKeyword(Keyword),
     ExpectedIdentifier,
     ExpectedStatement,
     ExpectedPunctuation(char),
@@ -61,7 +60,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
-        self.expect_keyword_or_err("let")?;
+        self.expect_keyword_or_err(Keyword::Let)?;
         let place = self.consume_ident_if_exists()?;
 
         if self.expect_assign_op() {
@@ -86,12 +85,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_computation(&mut self) -> ParseResult<Computation> {
-        self.expect_keyword_or_err("main")?;
+        self.expect_keyword_or_err(Keyword::Main)?;
 
         let mut vars = vec![];
         loop {
-            match self.peek_ident_if_exists() {
-                Some(ident) if ident == "var" => {
+            match self.peek_keyword_if_exists() {
+                Some(Keyword::Var) => {
                     vars.push(self.parse_var_decl()?);
                 },
 
@@ -133,18 +132,15 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         } else if let Some(n) = self.consume_number_if_exists() {
             Ok(Factor::Number(n))
         } else {
-            match self.peek_ident_if_exists() {
-                Some(call_keyword) if call_keyword == "call" => {
-                    Ok(Factor::Call(self.parse_func_call()?))
-                }
-                Some(_) => Ok(Factor::VarRef(self.consume_ident_if_exists().unwrap())),
-                None => Err(ParseError::ExpectedIdentifier),
+            match self.peek_keyword_if_exists() {
+                Some(Keyword::Call) => Ok(Factor::Call(self.parse_func_call()?)),
+                _ => Ok(Factor::VarRef(self.consume_ident_if_exists()?)),
             }
         }
     }
 
     pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
-        self.expect_keyword_or_err("call")?;
+        self.expect_keyword_or_err(Keyword::Call)?;
         let name = self.consume_ident_if_exists()?;
         let mut args = vec![];
 
@@ -163,8 +159,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
-        let returns_void = self.expect_keyword("void");
-        self.expect_keyword_or_err("function")?;
+        let returns_void = self.expect_keyword(Keyword::Void);
+        self.expect_keyword_or_err(Keyword::Function)?;
         let name = self.consume_ident_if_exists()?;
         self.expect_punctuation_or_err('(')?;
 
@@ -203,19 +199,19 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_if_stmt(&mut self) -> ParseResult<IfStmt> {
-        self.expect_keyword_or_err("if")?;
+        self.expect_keyword_or_err(Keyword::If)?;
         let condition = self.parse_relation()?;
 
-        self.expect_keyword_or_err("then")?;
+        self.expect_keyword_or_err(Keyword::Then)?;
         let then_block = self.parse_block()?;
 
-        let else_block = if self.expect_keyword("else") {
+        let else_block = if self.expect_keyword(Keyword::Else) {
             Some(self.parse_block()?)
         } else {
             None
         };
 
-        self.expect_keyword_or_err("fi")?;
+        self.expect_keyword_or_err(Keyword::Fi)?;
 
         Ok(IfStmt {
             condition,
@@ -225,13 +221,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_loop(&mut self) -> ParseResult<Loop> {
-        self.expect_keyword_or_err("while")?;
+        self.expect_keyword_or_err(Keyword::While)?;
         let condition = self.parse_relation()?;
 
-        self.expect_keyword_or_err("do")?;
+        self.expect_keyword_or_err(Keyword::Do)?;
         let body = self.parse_block()?;
 
-        self.expect_keyword_or_err("od")?;
+        self.expect_keyword_or_err(Keyword::Od)?;
         Ok(Loop { condition, body })
     }
 
@@ -244,19 +240,19 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_return(&mut self) -> ParseResult<Return> {
-        self.expect_keyword_or_err("return")?;
+        self.expect_keyword_or_err(Keyword::Return)?;
         let value = self.parse_expr().ok(); // FIXME: this is probably very bad (lookahead?)
 
         Ok(Return { value })
     }
 
     pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
-        match self.peek_ident_if_exists() {
-            Some("let") => self.parse_assignment().map(|a| a.into()),
-            Some("call") => self.parse_func_call().map(|c| c.into()),
-            Some("if") => self.parse_if_stmt().map(|i| i.into()),
-            Some("while") => self.parse_loop().map(|l| l.into()),
-            Some("return") => self.parse_return().map(|r| r.into()),
+        match self.peek_keyword_if_exists() {
+            Some(Keyword::Let) => self.parse_assignment().map(|a| a.into()),
+            Some(Keyword::Call) => self.parse_func_call().map(|c| c.into()),
+            Some(Keyword::If) => self.parse_if_stmt().map(|i| i.into()),
+            Some(Keyword::While) => self.parse_loop().map(|l| l.into()),
+            Some(Keyword::Return) => self.parse_return().map(|r| r.into()),
             _ => Err(ParseError::ExpectedStatement),
         }
     }
@@ -274,7 +270,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
-        self.expect_keyword_or_err("var")?;
+        self.expect_keyword_or_err(Keyword::Var)?;
         let mut vars = vec![self.consume_ident_if_exists()?];
 
         while !self.expect_punctuation_matching(';') {
@@ -302,9 +298,9 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn expect_keyword(&mut self, keyword: &str) -> bool {
-        match self.peek_ident_if_exists() {
-            Some(ident) if ident == keyword => {
+    pub fn expect_keyword(&mut self, keyword: Keyword) -> bool {
+        match self.peek_keyword_if_exists() {
+            Some(kw) if kw == keyword => {
                 self.advance();
                 true
             }
@@ -312,11 +308,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn expect_keyword_or_err(&mut self, keyword: &str) -> ParseResult<()> {
+    pub fn expect_keyword_or_err(&mut self, keyword: Keyword) -> ParseResult<()> {
         if self.expect_keyword(keyword) {
             Ok(())
         } else {
-            Err(ParseError::ExpectedKeyword(Cow::from(keyword.to_string())))
+            Err(ParseError::ExpectedKeyword(keyword))
         }
     }
 
@@ -405,6 +401,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     pub fn peek_ident_if_exists(&self) -> Option<&str> {
         match self.peek() {
             Some(Ok(Token::Ident(ident))) => Some(ident),
+            _ => None,
+        }
+    }
+
+    pub fn peek_keyword_if_exists(&self) -> Option<Keyword> {
+        match self.peek() {
+            Some(Ok(Token::Keyword(kw))) => Some(*kw),
             _ => None,
         }
     }
