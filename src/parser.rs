@@ -9,7 +9,8 @@ use crate::{
         Relation, Return, Stmt, Term, TermOp, VarDecl,
     },
     scanner::{InvalidCharError, TokenResult},
-    tok::{RelOp, Token},
+    tok::Token,
+    utils::RelOp,
 };
 
 pub type ParseResult<T> = Result<T, ParseError>;

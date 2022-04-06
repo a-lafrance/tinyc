@@ -2,12 +2,12 @@ pub(crate) mod ast;
 pub(crate) mod parser;
 pub(crate) mod scanner;
 pub(crate) mod tok;
+pub(crate) mod utils;
 
 use self::parser::Parser;
-use clap::Parser as ArgParse;
 use std::{ffi::OsString, fs::File, io::Read};
 
-#[derive(Debug, ArgParse)]
+#[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
 struct Config {
     #[clap(help = "The source file to compile")]
