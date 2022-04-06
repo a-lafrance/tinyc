@@ -1,9 +1,12 @@
-use crate::tok::{RelOp, Token};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     iter,
-    str::Chars,
+    str::{Chars, FromStr},
+};
+use crate::{
+    tok::Token,
+    utils::{Keyword, RelOp},
 };
 
 pub type TokenResult = Result<Token, InvalidCharError>;
@@ -48,7 +51,7 @@ impl<'a> Cursor<'a> {
 
         let tok = self
             .read_number()
-            .or_else(|| self.read_ident().map(Ok))
+            .or_else(|| self.read_ident_or_keyword().map(Ok))
             .unwrap_or_else(move || {
                 if self.consume_next_if(|c| c == '>').is_some() {
                     let tok = if self.consume_next_if(|c| c == '=').is_some() {
@@ -96,7 +99,7 @@ impl<'a> Cursor<'a> {
         Some(tok)
     }
 
-    fn read_ident(&mut self) -> Option<Token> {
+    fn read_ident_or_keyword(&mut self) -> Option<Token> {
         // read letters and digits
         // if you hit anything else, end the token and return
         let mut ident = String::new();
@@ -107,6 +110,8 @@ impl<'a> Cursor<'a> {
 
         if ident.is_empty() {
             None
+        } else if let Ok(kw) = Keyword::from_str(&ident) {
+            Some(Token::Keyword(kw))
         } else {
             Some(Token::Ident(ident))
         }
@@ -187,14 +192,14 @@ mod tests {
         assert_eq!(
             tokenize(input).collect::<Result<Vec<_>, _>>(),
             Ok(vec![
-                Token::Ident("main".to_string()),
-                Token::Ident("var".to_string()),
+                Token::Keyword(Keyword::Main),
+                Token::Keyword(Keyword::Var),
                 Token::Ident("a".to_string()),
                 Token::Punctuation(','),
                 Token::Ident("b".to_string()),
                 Token::Punctuation(';'),
                 Token::Punctuation('{'),
-                Token::Ident("let".to_string()),
+                Token::Keyword(Keyword::Let),
                 Token::Ident("a".to_string()),
                 Token::AssignOp,
                 Token::Number(1),
@@ -203,20 +208,20 @@ mod tests {
                 Token::Punctuation('+'),
                 Token::Number(3),
                 Token::Punctuation(';'),
-                Token::Ident("if".to_string()),
+                Token::Keyword(Keyword::If),
                 Token::Ident("a".to_string()),
                 Token::RelOp(RelOp::Gt),
                 Token::Number(0),
-                Token::Ident("then".to_string()),
-                Token::Ident("let".to_string()),
+                Token::Keyword(Keyword::Then),
+                Token::Keyword(Keyword::Let),
                 Token::Ident("b".to_string()),
                 Token::AssignOp,
                 Token::Ident("a".to_string()),
                 Token::Punctuation('*'),
                 Token::Number(2),
                 Token::Punctuation(';'),
-                Token::Ident("else".to_string()),
-                Token::Ident("let".to_string()),
+                Token::Keyword(Keyword::Else),
+                Token::Keyword(Keyword::Let),
                 Token::Ident("b".to_string()),
                 Token::AssignOp,
                 Token::Ident("a".to_string()),
@@ -225,7 +230,7 @@ mod tests {
                 Token::Punctuation('-'),
                 Token::Number(1),
                 Token::Punctuation(';'),
-                Token::Ident("fi".to_string()),
+                Token::Keyword(Keyword::Fi),
                 Token::Punctuation(';'),
                 Token::Punctuation('}'),
                 Token::Punctuation('.'),

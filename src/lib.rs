@@ -2,6 +2,7 @@ pub(crate) mod ast;
 pub(crate) mod parser;
 pub(crate) mod scanner;
 pub(crate) mod tok;
+pub(crate) mod utils;
 
 use self::parser::Parser;
 use clap::Parser as ArgParse;

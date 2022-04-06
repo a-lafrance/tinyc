@@ -1,5 +1,5 @@
-use crate::tok::RelOp;
 use std::convert::TryFrom;
+use crate::utils::RelOp;
 
 /* DECLARATIONS */
 
