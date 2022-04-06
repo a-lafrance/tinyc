@@ -88,14 +88,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.expect_keyword_or_err(Keyword::Main)?;
 
         let mut vars = vec![];
-        loop {
-            match self.peek_keyword_if_exists() {
-                Some(Keyword::Var) => {
-                    vars.push(self.parse_var_decl()?);
-                },
-
-                _ => break,
-            }
+        while let Some(Keyword::Var) = self.peek_keyword_if_exists() {
+            vars.push(self.parse_var_decl()?);
         }
 
         let mut funcs = vec![];
@@ -144,14 +138,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let name = self.consume_ident_if_exists()?;
         let mut args = vec![];
 
-        if self.expect_punctuation_matching('(') {
-            if !self.expect_punctuation_matching(')') {
-                args.push(self.parse_expr()?);
+        if self.expect_punctuation_matching('(') && !self.expect_punctuation_matching(')') {
+            args.push(self.parse_expr()?);
 
-                while !self.expect_punctuation_matching(')') {
-                    self.expect_punctuation_matching(',');
-                    args.push(self.parse_expr()?);
-                }
+            while !self.expect_punctuation_matching(')') {
+                self.expect_punctuation_matching(',');
+                args.push(self.parse_expr()?);
             }
         }
 
@@ -398,13 +390,6 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
     }
 
-    pub fn peek_ident_if_exists(&self) -> Option<&str> {
-        match self.peek() {
-            Some(Ok(Token::Ident(ident))) => Some(ident),
-            _ => None,
-        }
-    }
-
     pub fn peek_keyword_if_exists(&self) -> Option<Keyword> {
         match self.peek() {
             Some(Ok(Token::Keyword(kw))) => Some(*kw),
@@ -428,7 +413,7 @@ mod tests {
         let var = "asg".to_string();
         let val = 123;
         let tokens = stream_from_tokens(vec![
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident(var.clone()),
             Token::AssignOp,
             Token::Number(val),
@@ -454,7 +439,7 @@ mod tests {
     fn parse_assignment_complex() {
         // result = a * 2 + b
         let tokens = stream_from_tokens(vec![
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
@@ -492,7 +477,7 @@ mod tests {
         let var = "asg".to_string();
         let val = 123;
         let tokens = stream_from_tokens(vec![
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident(var.clone()),
             Token::AssignOp,
             Token::Number(val),
@@ -525,12 +510,12 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Main),
+            Token::Keyword(Keyword::Var),
             Token::Ident("x".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("x".to_string()),
             Token::AssignOp,
             Token::Number(1),
@@ -572,17 +557,17 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Main),
+            Token::Keyword(Keyword::Var),
             Token::Ident("a".to_string()),
             Token::Punctuation(','),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("c".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
@@ -638,8 +623,8 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Main),
+            Token::Keyword(Keyword::Function),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -648,7 +633,7 @@ mod tests {
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("x".to_string()),
             Token::Punctuation('+'),
             Token::Ident("y".to_string()),
@@ -656,10 +641,10 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("OutputNum".to_string()),
             Token::Punctuation('('),
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Number(1),
@@ -760,13 +745,13 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Main),
+            Token::Keyword(Keyword::Var),
             Token::Ident("x".to_string()),
             Token::Punctuation(','),
             Token::Ident("y".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -775,21 +760,21 @@ mod tests {
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("x".to_string()),
             Token::Punctuation('+'),
             Token::Ident("y".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('}'),
             Token::Punctuation(';'),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("double".to_string()),
             Token::Punctuation('('),
             Token::Ident("n".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("n".to_string()),
             Token::Punctuation('*'),
             Token::Number(2),
@@ -797,24 +782,24 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("x".to_string()),
             Token::AssignOp,
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("y".to_string()),
             Token::AssignOp,
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("double".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("OutputNum".to_string()),
             Token::Punctuation('('),
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -983,94 +968,94 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("main".to_string()),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Main),
+            Token::Keyword(Keyword::Var),
             Token::Ident("in".to_string()),
             Token::Punctuation(','),
             Token::Ident("cmp".to_string()),
             Token::Punctuation(','),
             Token::Ident("result".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("square".to_string()),
             Token::Punctuation('('),
             Token::Ident("n".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("n".to_string()),
             Token::Punctuation('*'),
             Token::Ident("n".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('}'),
             Token::Punctuation(';'),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("big".to_string()),
             Token::Punctuation('('),
             Token::Ident("n".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("n".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(5),
-            Token::Ident("then".to_string()),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Return),
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Return),
             Token::Number(0),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
             Token::Punctuation(';'),
             Token::Punctuation('}'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("in".to_string()),
             Token::AssignOp,
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("InputNum".to_string()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("cmp".to_string()),
             Token::AssignOp,
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("big".to_string()),
             Token::Punctuation('('),
             Token::Ident("in".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("cmp".to_string()),
             Token::RelOp(RelOp::Eq),
             Token::Number(1),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Ident("in".to_string()),
             Token::Punctuation('+'),
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("square".to_string()),
             Token::Punctuation('('),
             Token::Ident("in".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
             Token::Punctuation(';'),
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("OutputNum".to_string()),
             Token::Punctuation('('),
             Token::Ident("result".to_string()),
@@ -1421,7 +1406,7 @@ mod tests {
         let func = "double".to_string();
         let arg = 5;
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
             Token::Number(arg),
@@ -1449,7 +1434,7 @@ mod tests {
         // call run
         let func = "run".to_string();
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
         ]);
         let mut parser = Parser::new(tokens);
@@ -1468,7 +1453,7 @@ mod tests {
         // call run()
         let func = "run".to_string();
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
@@ -1490,7 +1475,7 @@ mod tests {
         let func = "square".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
             Token::Number(arg),
@@ -1518,7 +1503,7 @@ mod tests {
         // call add(x, y)
         let func = "add".to_string();
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -1556,7 +1541,7 @@ mod tests {
     fn parse_func_call_many_args() {
         // call max(x, y, 5)
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident("max".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -1605,7 +1590,7 @@ mod tests {
         let func = "square".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
-            Token::Ident("call".to_string()),
+            Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
             Token::Number(arg),
@@ -1637,8 +1622,8 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("void".to_string()),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Void),
+            Token::Keyword(Keyword::Function),
             Token::Ident("empty".to_string()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
@@ -1667,13 +1652,13 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("const".to_string()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Number(1),
             Token::Punctuation(';'),
             Token::Punctuation('}'),
@@ -1709,14 +1694,14 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("square".to_string()),
             Token::Punctuation('('),
             Token::Ident("n".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("n".to_string()),
             Token::Punctuation('*'),
             Token::Ident("n".to_string()),
@@ -1756,7 +1741,7 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Ident("x".to_string()),
@@ -1767,7 +1752,7 @@ mod tests {
             Token::Punctuation(')'),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("x".to_string()),
             Token::Punctuation('+'),
             Token::Ident("y".to_string()),
@@ -1817,17 +1802,17 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("void".to_string()),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Void),
+            Token::Keyword(Keyword::Function),
             Token::Ident("assign".to_string()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("x".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("x".to_string()),
             Token::AssignOp,
             Token::Number(1),
@@ -1870,22 +1855,22 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("void".to_string()),
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Void),
+            Token::Keyword(Keyword::Function),
             Token::Ident("add".to_string()),
             Token::Punctuation('('),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("x".to_string()),
             Token::Punctuation(','),
             Token::Ident("y".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("result".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Ident("x".to_string()),
@@ -1944,35 +1929,35 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("function".to_string()),
+            Token::Keyword(Keyword::Function),
             Token::Ident("gtz".to_string()),
             Token::Punctuation('('),
             Token::Ident("n".to_string()),
             Token::Punctuation(')'),
             Token::Punctuation(';'),
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("result".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('{'),
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("n".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Number(0),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
             Token::Punctuation(';'),
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("result".to_string()),
             Token::Punctuation(';'),
             Token::Punctuation('}'),
@@ -2061,16 +2046,16 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2125,22 +2110,22 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2207,29 +2192,29 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2312,24 +2297,24 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2403,30 +2388,30 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2512,37 +2497,37 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("c".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('*'),
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2636,7 +2621,7 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Number(1),
@@ -2646,12 +2631,12 @@ mod tests {
             Token::Number(2),
             Token::Punctuation('+'),
             Token::Ident("c".to_string()),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
             Token::Number(0),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2718,22 +2703,22 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("if".to_string()),
+            Token::Keyword(Keyword::If),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("then".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Then),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(1),
-            Token::Ident("else".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Else),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Number(2),
             Token::Punctuation(';'),
-            Token::Ident("fi".to_string()),
+            Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2797,19 +2782,19 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("while".to_string()),
+            Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("do".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Do),
+            Token::Keyword(Keyword::Let),
             Token::Ident("a".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('-'),
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("od".to_string()),
+            Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2866,26 +2851,26 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("while".to_string()),
+            Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("do".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Do),
+            Token::Keyword(Keyword::Let),
             Token::Ident("b".to_string()),
             Token::AssignOp,
             Token::Ident("b".to_string()),
             Token::Punctuation('+'),
             Token::Ident("a".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Let),
             Token::Ident("a".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('-'),
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("od".to_string()),
+            Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -2960,7 +2945,7 @@ mod tests {
         */
 
         let tokens = stream_from_tokens(vec![
-            Token::Ident("while".to_string()),
+            Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
             Token::Punctuation('-'),
             Token::Ident("b".to_string()),
@@ -2968,15 +2953,15 @@ mod tests {
             Token::Ident("c".to_string()),
             Token::Punctuation('*'),
             Token::Number(2),
-            Token::Ident("do".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Do),
+            Token::Keyword(Keyword::Let),
             Token::Ident("a".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('-'),
             Token::Ident("b".to_string()),
             Token::Punctuation(';'),
-            Token::Ident("od".to_string()),
+            Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -3032,19 +3017,19 @@ mod tests {
     #[test]
     fn parse_loop_as_stmt() {
         let tokens = stream_from_tokens(vec![
-            Token::Ident("while".to_string()),
+            Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
             Token::RelOp(RelOp::Gt),
             Token::Number(0),
-            Token::Ident("do".to_string()),
-            Token::Ident("let".to_string()),
+            Token::Keyword(Keyword::Do),
+            Token::Keyword(Keyword::Let),
             Token::Ident("a".to_string()),
             Token::AssignOp,
             Token::Ident("a".to_string()),
             Token::Punctuation('-'),
             Token::Number(1),
             Token::Punctuation(';'),
-            Token::Ident("od".to_string()),
+            Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::new(tokens);
 
@@ -3189,7 +3174,7 @@ mod tests {
 
     #[test]
     fn parse_return_no_val() {
-        let tokens = stream_from_tokens(vec![Token::Ident("return".to_string())]);
+        let tokens = stream_from_tokens(vec![Token::Keyword(Keyword::Return)]);
         let mut parser = Parser::new(tokens);
 
         assert_eq!(parser.parse_return(), Ok(Return { value: None }));
@@ -3199,7 +3184,7 @@ mod tests {
     fn parse_return_with_val() {
         // return a + 1
         let tokens = stream_from_tokens(vec![
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Number(1),
@@ -3230,7 +3215,7 @@ mod tests {
     fn parse_return_as_stmt() {
         // return a + 1
         let tokens = stream_from_tokens(vec![
-            Token::Ident("return".to_string()),
+            Token::Keyword(Keyword::Return),
             Token::Ident("a".to_string()),
             Token::Punctuation('+'),
             Token::Number(1),
@@ -3321,7 +3306,7 @@ mod tests {
     #[test]
     fn parse_var_decl_single_var() {
         let tokens = stream_from_tokens(vec![
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("asg".to_string()),
             Token::Punctuation(';'),
         ]);
@@ -3338,7 +3323,7 @@ mod tests {
     #[test]
     fn parse_var_decl_many_vars() {
         let tokens = stream_from_tokens(vec![
-            Token::Ident("var".to_string()),
+            Token::Keyword(Keyword::Var),
             Token::Ident("x".to_string()),
             Token::Punctuation(','),
             Token::Ident("y".to_string()),
