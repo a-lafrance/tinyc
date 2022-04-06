@@ -8,6 +8,7 @@ use crate::{
         Relation, Return, Stmt, Term, TermOp, VarDecl,
     },
     scanner::{InvalidCharError, TokenResult},
+    sym::{SymbolTable, UndefinedSymbolError},
     tok::Token,
     utils::{Keyword, RelOp},
 };
@@ -23,6 +24,7 @@ pub enum ParseError {
     ExpectedPunctuation(char),
     ExpectedAssignOp,
     ExpectedRelOp,
+    UndefinedSymbol(UndefinedSymbolError),
 }
 
 impl Display for ParseError {
@@ -35,6 +37,7 @@ impl Display for ParseError {
             ParseError::ExpectedPunctuation(c) => write!(f, "expected '{}'", c),
             ParseError::ExpectedAssignOp => write!(f, "expected '<-'"),
             ParseError::ExpectedRelOp => write!(f, "expected relational operator: one of {}", RelOp::all_as_str()),
+            ParseError::UndefinedSymbol(e) => write!(f, "{}", e),
         }
     }
 }
