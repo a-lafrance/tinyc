@@ -8,6 +8,8 @@ use crate::{
         Relation, Return, Stmt, Term, TermOp, VarDecl,
     },
     scanner::{InvalidCharError, TokenResult},
+    semcheck,
+    sym::{SymbolContext, SymbolTable, UndefinedSymbolError},
     tok::Token,
     utils::{Keyword, RelOp},
 };
@@ -23,6 +25,7 @@ pub enum ParseError {
     ExpectedPunctuation(char),
     ExpectedAssignOp,
     ExpectedRelOp,
+    UndefinedSymbol(UndefinedSymbolError),
 }
 
 impl Display for ParseError {
@@ -35,16 +38,30 @@ impl Display for ParseError {
             ParseError::ExpectedPunctuation(c) => write!(f, "expected '{}'", c),
             ParseError::ExpectedAssignOp => write!(f, "expected '<-'"),
             ParseError::ExpectedRelOp => write!(f, "expected relational operator: one of {}", RelOp::all_as_str()),
+            ParseError::UndefinedSymbol(e) => write!(f, "{}", e),
         }
     }
 }
 
 impl Error for ParseError { }
 
+impl From<InvalidCharError> for ParseError {
+    fn from(e: InvalidCharError) -> Self {
+        ParseError::InvalidChar(e)
+    }
+}
+
+impl From<UndefinedSymbolError> for ParseError {
+    fn from(e: UndefinedSymbolError) -> Self {
+        ParseError::UndefinedSymbol(e)
+    }
+}
+
 
 pub struct Parser<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
     stream: T,
+    sym_context: Option<SymbolContext>,
 }
 
 impl<T: Iterator<Item = TokenResult>> Parser<T> {
@@ -52,6 +69,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Parser {
             current: stream.next(),
             stream,
+            sym_context: None,
         }
     }
 
@@ -65,6 +83,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         if self.expect_assign_op() {
             let value = self.parse_expr()?;
+
+            match self.sym_context {
+                Some(ref sym_context) => semcheck::check_var_is_declared(sym_context, &place)?,
+                None => eprintln!("no symbol context detected when checking assignment"),
+            }
+
             Ok(Assignment { place, value })
         } else {
             Err(ParseError::ExpectedAssignOp)
@@ -86,6 +110,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_computation(&mut self) -> ParseResult<Computation> {
         self.expect_keyword_or_err(Keyword::Main)?;
+
+        let scope_name = Keyword::Main.to_string();
+        let mut sym_table = SymbolTable::new();
+        sym_table.insert_func(scope_name.clone());
+
+        let sym_context = SymbolContext::new(sym_table, scope_name);
+        self.sym_context = Some(sym_context);
 
         let mut vars = vec![];
         while let Some(Keyword::Var) = self.peek_keyword_if_exists() {
@@ -147,6 +178,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             }
         }
 
+        match self.sym_context {
+            Some(ref sym_context) => semcheck::check_func_is_defined(sym_context, &name)?,
+            None => eprintln!("no symbol context detected when checking function call"),
+        }
+
         Ok(FuncCall { name, args })
     }
 
@@ -171,6 +207,24 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         };
 
         self.expect_punctuation_or_err(';')?;
+
+        let prev_scope = match self.sym_context {
+            Some(ref mut sym_context) => {
+                sym_context.sym_table_mut().insert_func(name.clone());
+                Some(sym_context.enter_scope(name.clone()))
+            },
+
+            None => {
+                let mut sym_table = SymbolTable::new();
+                sym_table.insert_func(name.clone());
+
+                let sym_context = SymbolContext::new(sym_table, name.clone());
+                self.sym_context = Some(sym_context);
+
+                None
+            },
+        };
+
         let mut vars = vec![];
 
         while !self.expect_punctuation_matching('{') {
@@ -185,6 +239,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
             body
         };
+
+        if let Some(prev_scope) = prev_scope {
+            if let Some(ref mut sym_context) = self.sym_context {
+                sym_context.enter_scope(prev_scope);
+            }
+        }
 
         self.expect_punctuation_or_err(';')
             .map(|_| FuncDecl { returns_void, name, params, vars, body })
@@ -263,11 +323,26 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
         self.expect_keyword_or_err(Keyword::Var)?;
-        let mut vars = vec![self.consume_ident_if_exists()?];
+        let var = self.consume_ident_if_exists()?;
+
+        match self.sym_context {
+            Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
+            None => eprintln!("no symbol context detected when parsing variable declaration"),
+        }
+
+        let mut vars = vec![var];
 
         while !self.expect_punctuation_matching(';') {
             self.expect_punctuation_or_err(',')?;
-            vars.push(self.consume_ident_if_exists()?);
+
+            let var = self.consume_ident_if_exists()?;
+
+            match self.sym_context {
+                Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
+                None => eprintln!("no symbol context detected when parsing variable declaration"),
+            }
+
+            vars.push(var);
         }
 
         Ok(VarDecl { vars })

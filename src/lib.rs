@@ -1,6 +1,8 @@
 pub(crate) mod ast;
 pub(crate) mod parser;
 pub(crate) mod scanner;
+pub(crate) mod semcheck;
+pub(crate) mod sym;
 pub(crate) mod tok;
 pub(crate) mod utils;
 
