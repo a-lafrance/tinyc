@@ -22,7 +22,7 @@ impl SymbolTable {
 
     pub fn insert_var(&mut self, func: &str, name: String) -> Result<(), UndefinedSymbolError> {
         self.scopes.get_mut(func)
-            .ok_or(UndefinedSymbolError::RefToUndefinedFunc(func.to_string()))
+            .ok_or_else(|| UndefinedSymbolError::RefToUndefinedFunc(func.to_string()))
             .map(|vars| {
                 vars.insert(name);
             })

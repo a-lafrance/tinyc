@@ -179,7 +179,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         }
 
         match self.sym_context {
-            Some(ref sym_context) => semcheck::check_func_is_defined(&sym_context, &name)?,
+            Some(ref sym_context) => semcheck::check_func_is_defined(sym_context, &name)?,
             None => eprintln!("no symbol context detected when checking function call"),
         }
 
