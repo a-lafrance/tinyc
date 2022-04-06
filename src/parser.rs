@@ -8,7 +8,7 @@ use crate::{
         Relation, Return, Stmt, Term, TermOp, VarDecl,
     },
     scanner::{InvalidCharError, TokenResult},
-    sym::{SymbolTable, UndefinedSymbolError},
+    sym::{SymbolContext, UndefinedSymbolError},
     tok::Token,
     utils::{Keyword, RelOp},
 };
@@ -48,6 +48,7 @@ impl Error for ParseError { }
 pub struct Parser<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
     stream: T,
+    sym_context: Option<SymbolContext>,
 }
 
 impl<T: Iterator<Item = TokenResult>> Parser<T> {
@@ -55,6 +56,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Parser {
             current: stream.next(),
             stream,
+            sym_context: None,
         }
     }
 

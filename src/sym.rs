@@ -5,6 +5,19 @@
 // this way, you can identify two kinds of errors:
     // 1: reference to undefined variable or function
     // 2: redefinition of variable or function, but this one's arguable because it wasn't specified in the lang doc
+
+// when to use the symbol table and how?
+    // assignment: ensure that variable was declared
+    // func call: ensure that the function exists
+    // var decl: add variables to symbol table
+    // func decl: add function to symbol table
+    // func decl: enter func scope
+        // MAKE SURE to save and restore previous scope
+    // computation: enter main scope
+
+
+
+
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -51,6 +64,31 @@ impl SymbolTable {
         self.scopes.contains_key(name)
     }
 }
+
+
+pub struct SymbolContext {
+    sym_table: SymbolTable,
+    current_scope: String,
+}
+
+impl SymbolContext {
+    pub fn new(sym_table: SymbolTable, current_scope: String) -> SymbolContext {
+        SymbolContext { sym_table, current_scope }
+    }
+
+    pub fn sym_table(&self) -> &SymbolTable {
+        &self.sym_table
+    }
+
+    pub fn enter_scope(&mut self, scope: String) {
+        self.current_scope = scope;
+    }
+
+    pub fn contains_var_in_scope(&self, name: &str) -> bool {
+        self.sym_table.contains_var(&self.current_scope, name)
+    }
+}
+
 
 #[derive(Debug, PartialEq)]
 pub enum UndefinedSymbolError {
