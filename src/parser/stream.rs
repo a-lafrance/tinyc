@@ -9,6 +9,14 @@ use super::{
     ParseResult
 };
 
+// TokenStream has just been transplanted from the root of the parser module
+// It really needs to be rewritten from the ground up
+// This means reducing its functionality to a set of core methods with actual good names,
+// and also the most elegant internal and external apis possible
+
+// you want to:
+    // expect what type the next token is; consume if it exists, error otherwise
+    // expect exactly what the next token is; if it doesn't match, error
 pub struct TokenStream<T: Iterator<Item = TokenResult>> {
     current: Option<TokenResult>,
     tokens: T,
@@ -33,35 +41,27 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         prev
     }
 
-    pub fn expect_assign_op(&mut self) -> bool {
+    pub fn try_consume_assign_op(&mut self) -> ParseResult<()> {
         match self.current {
             Some(Ok(Token::AssignOp)) => {
                 self.advance();
-                true
-            }
-            _ => false,
+                Ok(())
+            },
+            _ => Err(ParseError::ExpectedAssignOp),
         }
     }
 
-    pub fn expect_keyword(&mut self, keyword: Keyword) -> bool {
-        match self.peek_keyword_if_exists() {
-            Some(kw) if kw == keyword => {
+    pub fn try_consume_matching_keyword(&mut self, target: Keyword) -> ParseResult<()> {
+        match self.current {
+            Some(Ok(Token::Keyword(kw))) if kw == target => {
                 self.advance();
-                true
-            }
-            _ => false,
+                Ok(())
+            },
+            _ => Err(ParseError::ExpectedKeyword(target)),
         }
     }
 
-    pub fn expect_keyword_or_err(&mut self, keyword: Keyword) -> ParseResult<()> {
-        if self.expect_keyword(keyword) {
-            Ok(())
-        } else {
-            Err(ParseError::ExpectedKeyword(keyword))
-        }
-    }
-
-    pub fn expect_relop(&mut self) -> ParseResult<RelOp> {
+    pub fn try_consume_relop(&mut self) -> ParseResult<RelOp> {
         match self.current {
             Some(Ok(Token::RelOp(op))) => {
                 self.advance();
@@ -72,26 +72,17 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn expect_punctuation_matching(&mut self, c: char) -> bool {
+    pub fn try_consume_matching_punctuation(&mut self, target: char) -> ParseResult<()> {
         match self.current {
-            Some(Ok(Token::Punctuation(ch))) if ch == c => {
+            Some(Ok(Token::Punctuation(c))) if c == target => {
                 self.advance();
-                true
+                Ok(())
             }
-
-            _ => false,
+            _ => Err(ParseError::ExpectedPunctuation(target)),
         }
     }
 
-    pub fn expect_punctuation_or_err(&mut self, c: char) -> ParseResult<()> {
-        if self.expect_punctuation_matching(c) {
-            Ok(())
-        } else {
-            Err(ParseError::ExpectedPunctuation(c))
-        }
-    }
-
-    pub fn consume_number_if_exists(&mut self) -> Option<u32> {
+    pub fn try_consume_number(&mut self) -> Option<u32> {
         match self.current {
             Some(Ok(Token::Number(n))) => {
                 self.advance();
@@ -101,7 +92,7 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn consume_ident_if_exists(&mut self) -> ParseResult<String> {
+    pub fn try_consume_ident(&mut self) -> ParseResult<String> {
         match self.current {
             Some(Ok(Token::Ident(_))) => match self.advance() {
                 Some(Ok(Token::Ident(ident))) => Ok(ident),
@@ -111,7 +102,7 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn consume_termop_if_exists(&mut self) -> Option<TermOp> {
+    pub fn try_consume_termop(&mut self) -> Option<TermOp> {
         match self.current {
             Some(Ok(Token::Punctuation('+'))) => {
                 self.advance();
@@ -127,7 +118,7 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn consume_factorop_if_exists(&mut self) -> Option<FactorOp> {
+    pub fn try_consume_factorop(&mut self) -> Option<FactorOp> {
         match self.current {
             Some(Ok(Token::Punctuation('*'))) => {
                 self.advance();
@@ -143,7 +134,7 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn peek_keyword_if_exists(&self) -> Option<Keyword> {
+    pub fn try_peek_keyword(&self) -> Option<Keyword> {
         match self.peek() {
             Some(Ok(Token::Keyword(kw))) => Some(*kw),
             _ => None,
