@@ -1,104 +1,52 @@
-use std::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+mod err;
+mod stream;
+
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FactorOp, FuncCall, FuncDecl, IfStmt, Loop,
-        Relation, Return, Stmt, Term, TermOp, VarDecl,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop,
+        Relation, Return, Stmt, Term, VarDecl,
     },
-    scanner::{InvalidCharError, TokenResult},
+    scanner::TokenResult,
     semcheck,
-    sym::{SymbolContext, SymbolTable, UndefinedSymbolError},
-    tok::Token,
-    utils::{Keyword, RelOp},
+    sym::{SymbolContext, SymbolTable},
+    utils::Keyword,
 };
+pub use self::err::ParseError;
+use self::stream::TokenStream;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
-#[derive(Debug, PartialEq)]
-pub enum ParseError {
-    InvalidChar(InvalidCharError), // still TODO: scanner error propagation
-    ExpectedKeyword(Keyword),
-    ExpectedIdentifier,
-    ExpectedStatement,
-    ExpectedPunctuation(char),
-    ExpectedAssignOp,
-    ExpectedRelOp,
-    UndefinedSymbol(UndefinedSymbolError),
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            ParseError::InvalidChar(e) => write!(f, "{}", e),
-            ParseError::ExpectedKeyword(kw) => write!(f, "expected keyword '{}'", kw),
-            ParseError::ExpectedIdentifier => write!(f, "expected identifier"),
-            ParseError::ExpectedStatement => write!(f, "expected statement"),
-            ParseError::ExpectedPunctuation(c) => write!(f, "expected '{}'", c),
-            ParseError::ExpectedAssignOp => write!(f, "expected '<-'"),
-            ParseError::ExpectedRelOp => write!(f, "expected relational operator: one of {}", RelOp::all_as_str()),
-            ParseError::UndefinedSymbol(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl Error for ParseError { }
-
-impl From<InvalidCharError> for ParseError {
-    fn from(e: InvalidCharError) -> Self {
-        ParseError::InvalidChar(e)
-    }
-}
-
-impl From<UndefinedSymbolError> for ParseError {
-    fn from(e: UndefinedSymbolError) -> Self {
-        ParseError::UndefinedSymbol(e)
-    }
-}
-
-
 pub struct Parser<T: Iterator<Item = TokenResult>> {
-    current: Option<TokenResult>,
-    stream: T,
+    stream: TokenStream<T>,
     sym_context: Option<SymbolContext>,
 }
 
 impl<T: Iterator<Item = TokenResult>> Parser<T> {
-    pub fn new(mut stream: T) -> Self {
+    pub fn new(tokens: T) -> Self {
         Parser {
-            current: stream.next(),
-            stream,
+            stream: TokenStream::new(tokens),
             sym_context: None,
         }
     }
 
-    pub fn peek(&self) -> Option<&TokenResult> {
-        self.current.as_ref()
-    }
-
     pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
-        self.expect_keyword_or_err(Keyword::Let)?;
-        let place = self.consume_ident_if_exists()?;
+        self.stream.try_consume_matching_keyword(Keyword::Let)?;
+        let place = self.stream.try_consume_ident()?;
+        self.stream.try_consume_assign_op()?;
+        let value = self.parse_expr()?;
 
-        if self.expect_assign_op() {
-            let value = self.parse_expr()?;
-
-            match self.sym_context {
-                Some(ref sym_context) => semcheck::check_var_is_declared(sym_context, &place)?,
-                None => eprintln!("no symbol context detected when checking assignment"),
-            }
-
-            Ok(Assignment { place, value })
-        } else {
-            Err(ParseError::ExpectedAssignOp)
+        match self.sym_context {
+            Some(ref sym_context) => semcheck::check_var_is_declared(sym_context, &place)?,
+            None => eprintln!("no symbol context detected when checking assignment"),
         }
+
+        Ok(Assignment { place, value })
     }
 
     pub fn parse_block(&mut self) -> ParseResult<Block> {
         let mut body = vec![self.parse_stmt()?];
 
-        while self.expect_punctuation_matching(';') {
+        while self.stream.try_consume_matching_punctuation(';').is_ok() {
             // FIXME: this doesn't feel robust enough
             if let Ok(stmt) = self.parse_stmt() {
                 body.push(stmt);
@@ -109,7 +57,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_computation(&mut self) -> ParseResult<Computation> {
-        self.expect_keyword_or_err(Keyword::Main)?;
+        self.stream.try_consume_matching_keyword(Keyword::Main)?;
 
         let scope_name = Keyword::Main.to_string();
         let mut sym_table = SymbolTable::new();
@@ -119,19 +67,19 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.sym_context = Some(sym_context);
 
         let mut vars = vec![];
-        while let Some(Keyword::Var) = self.peek_keyword_if_exists() {
+        let mut funcs = vec![];
+
+        while let Some(Keyword::Var) = self.stream.try_peek_keyword() {
             vars.push(self.parse_var_decl()?);
         }
 
-        let mut funcs = vec![];
-        while !self.expect_punctuation_matching('{') {
+        while self.stream.try_consume_matching_punctuation('{').is_err() {
             funcs.push(self.parse_func_decl()?);
         }
 
         let body = self.parse_block()?;
-
-        self.expect_punctuation_or_err('}')?;
-        self.expect_punctuation_or_err('.')?;
+        self.stream.try_consume_matching_punctuation('}')?;
+        self.stream.try_consume_matching_punctuation('.')?;
 
         Ok(Computation { vars, funcs, body })
     }
@@ -140,7 +88,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let root = self.parse_term()?;
         let mut ops = vec![];
 
-        while let Some(op) = self.consume_termop_if_exists() {
+        while let Some(op) = self.stream.try_consume_termop() {
             let next = self.parse_term()?;
             ops.push((op, next))
         }
@@ -149,31 +97,31 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_factor(&mut self) -> ParseResult<Factor> {
-        if self.expect_punctuation_matching('(') {
+        if self.stream.try_consume_matching_punctuation('(').is_ok() {
             let subexpr = Box::new(self.parse_expr()?);
 
-            self.expect_punctuation_or_err(')')
+            self.stream.try_consume_matching_punctuation(')')
                 .map(|_| Factor::SubExpr(subexpr))
-        } else if let Some(n) = self.consume_number_if_exists() {
+        } else if let Some(n) = self.stream.try_consume_number() {
             Ok(Factor::Number(n))
         } else {
-            match self.peek_keyword_if_exists() {
+            match self.stream.try_peek_keyword() {
                 Some(Keyword::Call) => Ok(Factor::Call(self.parse_func_call()?)),
-                _ => Ok(Factor::VarRef(self.consume_ident_if_exists()?)),
+                _ => Ok(Factor::VarRef(self.stream.try_consume_ident()?)),
             }
         }
     }
 
     pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
-        self.expect_keyword_or_err(Keyword::Call)?;
-        let name = self.consume_ident_if_exists()?;
+        self.stream.try_consume_matching_keyword(Keyword::Call)?;
+        let name = self.stream.try_consume_ident()?;
         let mut args = vec![];
 
-        if self.expect_punctuation_matching('(') && !self.expect_punctuation_matching(')') {
+        if self.stream.try_consume_matching_punctuation('(').is_ok() && self.stream.try_consume_matching_punctuation(')').is_err() {
             args.push(self.parse_expr()?);
 
-            while !self.expect_punctuation_matching(')') {
-                self.expect_punctuation_matching(',');
+            while self.stream.try_consume_matching_punctuation(')').is_err() {
+                self.stream.try_consume_matching_punctuation(',')?;
                 args.push(self.parse_expr()?);
             }
         }
@@ -187,26 +135,26 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
-        let returns_void = self.expect_keyword(Keyword::Void);
-        self.expect_keyword_or_err(Keyword::Function)?;
-        let name = self.consume_ident_if_exists()?;
-        self.expect_punctuation_or_err('(')?;
+        let returns_void = self.stream.try_consume_matching_keyword(Keyword::Void).is_ok();
+        self.stream.try_consume_matching_keyword(Keyword::Function)?;
+        let name = self.stream.try_consume_ident()?;
+        self.stream.try_consume_matching_punctuation('(')?;
 
-        let params = if self.expect_punctuation_matching(')') {
+        let params = if self.stream.try_consume_matching_punctuation(')').is_ok() {
             vec![]
         } else {
-            let mut params = vec![self.consume_ident_if_exists()?];
+            let mut params = vec![self.stream.try_consume_ident()?];
 
-            while !self.expect_punctuation_matching(')') {
-                self.expect_punctuation_or_err(',')?;
+            while self.stream.try_consume_matching_punctuation(')').is_err() {
+                self.stream.try_consume_matching_punctuation(',')?;
 
-                params.push(self.consume_ident_if_exists()?);
+                params.push(self.stream.try_consume_ident()?);
             }
 
             params
         };
 
-        self.expect_punctuation_or_err(';')?;
+        self.stream.try_consume_matching_punctuation(';')?;
 
         let prev_scope = match self.sym_context {
             Some(ref mut sym_context) => {
@@ -227,15 +175,15 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         let mut vars = vec![];
 
-        while !self.expect_punctuation_matching('{') {
+        while self.stream.try_consume_matching_punctuation('{').is_err() {
             vars.push(self.parse_var_decl()?);
         }
 
-        let body = if self.expect_punctuation_matching('}') {
+        let body = if self.stream.try_consume_matching_punctuation('}').is_ok() {
             Block::empty()
         } else {
             let body = self.parse_block()?;
-            self.expect_punctuation_or_err('}')?;
+            self.stream.try_consume_matching_punctuation('}')?;
 
             body
         };
@@ -246,24 +194,24 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             }
         }
 
-        self.expect_punctuation_or_err(';')
+        self.stream.try_consume_matching_punctuation(';')
             .map(|_| FuncDecl { returns_void, name, params, vars, body })
     }
 
     pub fn parse_if_stmt(&mut self) -> ParseResult<IfStmt> {
-        self.expect_keyword_or_err(Keyword::If)?;
+        self.stream.try_consume_matching_keyword(Keyword::If)?;
         let condition = self.parse_relation()?;
 
-        self.expect_keyword_or_err(Keyword::Then)?;
+        self.stream.try_consume_matching_keyword(Keyword::Then)?;
         let then_block = self.parse_block()?;
 
-        let else_block = if self.expect_keyword(Keyword::Else) {
+        let else_block = if self.stream.try_consume_matching_keyword(Keyword::Else).is_ok() {
             Some(self.parse_block()?)
         } else {
             None
         };
 
-        self.expect_keyword_or_err(Keyword::Fi)?;
+        self.stream.try_consume_matching_keyword(Keyword::Fi)?;
 
         Ok(IfStmt {
             condition,
@@ -273,33 +221,33 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_loop(&mut self) -> ParseResult<Loop> {
-        self.expect_keyword_or_err(Keyword::While)?;
+        self.stream.try_consume_matching_keyword(Keyword::While)?;
         let condition = self.parse_relation()?;
 
-        self.expect_keyword_or_err(Keyword::Do)?;
+        self.stream.try_consume_matching_keyword(Keyword::Do)?;
         let body = self.parse_block()?;
 
-        self.expect_keyword_or_err(Keyword::Od)?;
+        self.stream.try_consume_matching_keyword(Keyword::Od)?;
         Ok(Loop { condition, body })
     }
 
     pub fn parse_relation(&mut self) -> ParseResult<Relation> {
         let lhs = self.parse_expr()?;
-        let op = self.expect_relop()?;
+        let op = self.stream.try_consume_relop()?;
         let rhs = self.parse_expr()?;
 
         Ok(Relation { lhs, rhs, op })
     }
 
     pub fn parse_return(&mut self) -> ParseResult<Return> {
-        self.expect_keyword_or_err(Keyword::Return)?;
+        self.stream.try_consume_matching_keyword(Keyword::Return)?;
         let value = self.parse_expr().ok(); // FIXME: this is probably very bad (lookahead?)
 
         Ok(Return { value })
     }
 
     pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
-        match self.peek_keyword_if_exists() {
+        match self.stream.try_peek_keyword() {
             Some(Keyword::Let) => self.parse_assignment().map(|a| a.into()),
             Some(Keyword::Call) => self.parse_func_call().map(|c| c.into()),
             Some(Keyword::If) => self.parse_if_stmt().map(|i| i.into()),
@@ -313,7 +261,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let root = self.parse_factor()?;
         let mut ops = vec![];
 
-        while let Some(op) = self.consume_factorop_if_exists() {
+        while let Some(op) = self.stream.try_consume_factorop() {
             let next = self.parse_factor()?;
             ops.push((op, next))
         }
@@ -322,8 +270,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
-        self.expect_keyword_or_err(Keyword::Var)?;
-        let var = self.consume_ident_if_exists()?;
+        self.stream.try_consume_matching_keyword(Keyword::Var)?;
+        let var = self.stream.try_consume_ident()?;
 
         match self.sym_context {
             Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
@@ -332,10 +280,9 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         let mut vars = vec![var];
 
-        while !self.expect_punctuation_matching(';') {
-            self.expect_punctuation_or_err(',')?;
-
-            let var = self.consume_ident_if_exists()?;
+        while self.stream.try_consume_matching_punctuation(';').is_err() {
+            self.stream.try_consume_matching_punctuation(',')?;
+            let var = self.stream.try_consume_ident()?;
 
             match self.sym_context {
                 Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
@@ -347,136 +294,16 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         Ok(VarDecl { vars })
     }
-
-    fn advance(&mut self) -> Option<TokenResult> {
-        let prev = self.current.take();
-        self.current = self.stream.next();
-
-        prev
-    }
-
-    pub fn expect_assign_op(&mut self) -> bool {
-        match self.current {
-            Some(Ok(Token::AssignOp)) => {
-                self.advance();
-                true
-            }
-            _ => false,
-        }
-    }
-
-    pub fn expect_keyword(&mut self, keyword: Keyword) -> bool {
-        match self.peek_keyword_if_exists() {
-            Some(kw) if kw == keyword => {
-                self.advance();
-                true
-            }
-            _ => false,
-        }
-    }
-
-    pub fn expect_keyword_or_err(&mut self, keyword: Keyword) -> ParseResult<()> {
-        if self.expect_keyword(keyword) {
-            Ok(())
-        } else {
-            Err(ParseError::ExpectedKeyword(keyword))
-        }
-    }
-
-    pub fn expect_relop(&mut self) -> ParseResult<RelOp> {
-        match self.current {
-            Some(Ok(Token::RelOp(op))) => {
-                self.advance();
-                Ok(op)
-            }
-
-            _ => Err(ParseError::ExpectedRelOp),
-        }
-    }
-
-    pub fn expect_punctuation_matching(&mut self, c: char) -> bool {
-        match self.current {
-            Some(Ok(Token::Punctuation(ch))) if ch == c => {
-                self.advance();
-                true
-            }
-
-            _ => false,
-        }
-    }
-
-    pub fn expect_punctuation_or_err(&mut self, c: char) -> ParseResult<()> {
-        if self.expect_punctuation_matching(c) {
-            Ok(())
-        } else {
-            Err(ParseError::ExpectedPunctuation(c))
-        }
-    }
-
-    pub fn consume_number_if_exists(&mut self) -> Option<u32> {
-        match self.current {
-            Some(Ok(Token::Number(n))) => {
-                self.advance();
-                Some(n)
-            }
-            _ => None,
-        }
-    }
-
-    pub fn consume_ident_if_exists(&mut self) -> ParseResult<String> {
-        match self.current {
-            Some(Ok(Token::Ident(_))) => match self.advance() {
-                Some(Ok(Token::Ident(ident))) => Ok(ident),
-                _ => unreachable!(),
-            },
-            _ => Err(ParseError::ExpectedIdentifier),
-        }
-    }
-
-    pub fn consume_termop_if_exists(&mut self) -> Option<TermOp> {
-        match self.current {
-            Some(Ok(Token::Punctuation('+'))) => {
-                self.advance();
-                Some(TermOp::Add)
-            }
-
-            Some(Ok(Token::Punctuation('-'))) => {
-                self.advance();
-                Some(TermOp::Sub)
-            }
-
-            _ => None,
-        }
-    }
-
-    pub fn consume_factorop_if_exists(&mut self) -> Option<FactorOp> {
-        match self.current {
-            Some(Ok(Token::Punctuation('*'))) => {
-                self.advance();
-                Some(FactorOp::Mul)
-            }
-
-            Some(Ok(Token::Punctuation('/'))) => {
-                self.advance();
-                Some(FactorOp::Div)
-            }
-
-            _ => None,
-        }
-    }
-
-    pub fn peek_keyword_if_exists(&self) -> Option<Keyword> {
-        match self.peek() {
-            Some(Ok(Token::Keyword(kw))) => Some(*kw),
-            _ => None,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tok::Token;
+    use crate::{
+        ast::{FactorOp, TermOp},
+        tok::Token,
+        utils::RelOp,
+    };
 
     fn stream_from_tokens(tokens: Vec<Token>) -> impl Iterator<Item = TokenResult> {
         tokens.into_iter().map(|tok| Ok(tok))
