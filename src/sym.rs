@@ -1,30 +1,9 @@
-// what does a symbol table need to do?
-// track 2 things:
-    // in each scope, which variables have been defined
-    // in the program, which functions have been defined
-// this way, you can identify two kinds of errors:
-    // 1: reference to undefined variable or function
-    // 2: redefinition of variable or function, but this one's arguable because it wasn't specified in the lang doc
-
-// when to use the symbol table and how?
-    // assignment: ensure that variable was declared
-    // func call: ensure that the function exists
-    // var decl: add variables to symbol table
-    // func decl: add function to symbol table
-    // func decl: enter func scope
-        // MAKE SURE to save and restore previous scope
-    // computation: enter main scope
-
-
-
-
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
     fmt::{self, Display, Formatter},
 };
 use maplit::{hashmap, hashset};
-use crate::utils::Keyword;
 
 pub struct SymbolTable {
     scopes: HashMap<String, HashSet<String>>,
@@ -34,7 +13,6 @@ impl SymbolTable {
     pub fn new() -> SymbolTable {
         SymbolTable {
             scopes: hashmap!{
-                Keyword::Main.to_string() => hashset!{},
                 "InputNum".to_string() => hashset!{},
                 "OutputNum".to_string() => hashset!{},
                 "OutputNewLine".to_string() => hashset!{},
@@ -80,12 +58,23 @@ impl SymbolContext {
         &self.sym_table
     }
 
-    pub fn enter_scope(&mut self, scope: String) {
+    pub fn sym_table_mut(&mut self) -> &mut SymbolTable {
+        &mut self.sym_table
+    }
+
+    pub fn enter_scope(&mut self, scope: String) -> String {
+        let prev_scope = self.current_scope.clone(); // FIXME: slight inefficiency
         self.current_scope = scope;
+
+        prev_scope
     }
 
     pub fn contains_var_in_scope(&self, name: &str) -> bool {
         self.sym_table.contains_var(&self.current_scope, name)
+    }
+
+    pub fn insert_var_in_scope(&mut self, name: String) {
+        self.sym_table.insert_var(&self.current_scope, name).ok(); // this will always be true
     }
 }
 
