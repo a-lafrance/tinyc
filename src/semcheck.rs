@@ -1,15 +1,15 @@
-use crate::sym::{SymbolContext, UndefinedSymbolError};
+use crate::sym::{SymbolTable, UndefinedSymbolError};
 
-pub fn check_var_is_declared(sym_context: &SymbolContext, var: &str) -> Result<(), UndefinedSymbolError> {
-    if sym_context.contains_var_in_scope(var) {
+pub fn check_var_is_declared(sym_table: &SymbolTable, scope: &str, var: &str) -> Result<(), UndefinedSymbolError> {
+    if sym_table.contains_var(scope, var) {
         Ok(())
     } else {
         Err(UndefinedSymbolError::RefToUndefinedVar(var.to_string()))
     }
 }
 
-pub fn check_func_is_defined(sym_context: &SymbolContext, func: &str) -> Result<(), UndefinedSymbolError> {
-    if sym_context.sym_table().contains_func(func) {
+pub fn check_func_is_defined(sym_table: &SymbolTable, func: &str) -> Result<(), UndefinedSymbolError> {
+    if sym_table.contains_scope(func) {
         Ok(())
     } else {
         Err(UndefinedSymbolError::RefToUndefinedFunc(func.to_string()))
