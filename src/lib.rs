@@ -35,7 +35,7 @@ where
 
     let tokens = scanner::tokenize(&input);
 
-    match Parser::new(tokens).parse_computation() {
+    match Parser::new(tokens).and_then(|mut p| p.parse_computation()) {
         Ok(ast) => println!("{:?}", ast),
         Err(e) => eprintln!("parse error: {}", e),
     };

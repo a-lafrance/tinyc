@@ -22,11 +22,11 @@ pub struct Parser<T: Iterator<Item = TokenResult>> {
 }
 
 impl<T: Iterator<Item = TokenResult>> Parser<T> {
-    pub fn new(tokens: T) -> Self {
-        Parser {
-            stream: TokenStream::new(tokens),
+    pub fn new(tokens: T) -> ParseResult<Self> {
+        Ok(Parser {
+            stream: TokenStream::new(tokens)?,
             sym_context: None,
-        }
+        })
     }
 
     pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
@@ -88,7 +88,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let root = self.parse_term()?;
         let mut ops = vec![];
 
-        while let Some(op) = self.stream.try_consume_termop() {
+        while let Some(op) = self.stream.try_consume_termop()? {
             let next = self.parse_term()?;
             ops.push((op, next))
         }
@@ -102,7 +102,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
             self.stream.try_consume_matching_punctuation(')')
                 .map(|_| Factor::SubExpr(subexpr))
-        } else if let Some(n) = self.stream.try_consume_number() {
+        } else if let Some(n) = self.stream.try_consume_number()? {
             Ok(Factor::Number(n))
         } else {
             match self.stream.try_peek_keyword() {
@@ -261,7 +261,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let root = self.parse_factor()?;
         let mut ops = vec![];
 
-        while let Some(op) = self.stream.try_consume_factorop() {
+        while let Some(op) = self.stream.try_consume_factorop()? {
             let next = self.parse_factor()?;
             ops.push((op, next))
         }
@@ -301,6 +301,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::{FactorOp, TermOp},
+        scanner::InvalidCharError,
         tok::Token,
         utils::RelOp,
     };
@@ -320,7 +321,7 @@ mod tests {
             Token::AssignOp,
             Token::Number(val),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_assignment(),
@@ -350,7 +351,7 @@ mod tests {
             Token::Punctuation('+'),
             Token::Ident("b".to_string()),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_assignment(),
@@ -384,7 +385,7 @@ mod tests {
             Token::AssignOp,
             Token::Number(val),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_stmt(),
@@ -425,7 +426,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation('.'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
             vars: vec![VarDecl { vars: vec!["x".to_string()] }],
@@ -479,7 +480,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation('.'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
             vars: vec![
@@ -558,7 +559,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation('.'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
             vars: vec![],
@@ -713,7 +714,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation('.'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
             vars: vec![
@@ -966,7 +967,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation('.'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
             vars: vec![
@@ -1176,7 +1177,7 @@ mod tests {
     fn parse_expr_single_term() {
         let n = 5;
         let tokens = stream_from_tokens(vec![Token::Number(n)]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_expr(),
@@ -1200,7 +1201,7 @@ mod tests {
             Token::Punctuation(op.into()),
             Token::Number(m),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_expr(),
@@ -1234,7 +1235,7 @@ mod tests {
             Token::Punctuation(op2.into()),
             Token::Number(z),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_expr(),
@@ -1267,7 +1268,7 @@ mod tests {
     fn parse_factor_var_ref() {
         let ident = "asg".to_string();
         let tokens = stream_from_tokens(vec![Token::Ident(ident.clone())]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_factor(), Ok(Factor::VarRef(ident)));
     }
@@ -1276,7 +1277,7 @@ mod tests {
     fn parse_factor_number() {
         let n = 5;
         let tokens = stream_from_tokens(vec![Token::Number(n)]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_factor(), Ok(Factor::Number(n)));
     }
@@ -1289,7 +1290,7 @@ mod tests {
             Token::Number(n),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_factor(),
@@ -1314,7 +1315,7 @@ mod tests {
             Token::Number(arg),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_factor(),
@@ -1339,7 +1340,7 @@ mod tests {
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1360,7 +1361,7 @@ mod tests {
             Token::Punctuation('('),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1383,7 +1384,7 @@ mod tests {
             Token::Number(arg),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1413,7 +1414,7 @@ mod tests {
             Token::Ident("y".to_string()),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1453,7 +1454,7 @@ mod tests {
             Token::Number(5),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1498,7 +1499,7 @@ mod tests {
             Token::Number(arg),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_stmt(),
@@ -1534,7 +1535,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: true,
@@ -1566,7 +1567,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: false,
@@ -1611,7 +1612,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: false,
@@ -1664,7 +1665,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: false,
@@ -1722,7 +1723,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: true,
@@ -1782,7 +1783,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: true,
@@ -1865,7 +1866,7 @@ mod tests {
             Token::Punctuation('}'),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_func_decl(), Ok(FuncDecl {
             returns_void: false,
@@ -1959,7 +1960,7 @@ mod tests {
             Token::Number(1),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2029,7 +2030,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2118,7 +2119,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2218,7 +2219,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2315,7 +2316,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2431,7 +2432,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2540,7 +2541,7 @@ mod tests {
             Token::Number(0),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(),
@@ -2622,7 +2623,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_stmt(),
@@ -2698,7 +2699,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_loop(),
@@ -2774,7 +2775,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_loop(),
@@ -2865,7 +2866,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_loop(),
@@ -2933,7 +2934,7 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_stmt(),
@@ -2989,7 +2990,7 @@ mod tests {
             Token::RelOp(op),
             Token::Number(n),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_relation(),
@@ -3032,7 +3033,7 @@ mod tests {
             Token::Punctuation('*'),
             Token::Number(2),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_relation(),
@@ -3077,7 +3078,7 @@ mod tests {
     #[test]
     fn parse_return_no_val() {
         let tokens = stream_from_tokens(vec![Token::Keyword(Keyword::Return)]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_return(), Ok(Return { value: None }));
     }
@@ -3091,7 +3092,7 @@ mod tests {
             Token::Punctuation('+'),
             Token::Number(1),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_return(),
@@ -3122,7 +3123,7 @@ mod tests {
             Token::Punctuation('+'),
             Token::Number(1),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_stmt(),
@@ -3148,7 +3149,7 @@ mod tests {
     fn parse_term_single_factor() {
         let n = 5;
         let tokens = stream_from_tokens(vec![Token::Number(n)]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_term(),
@@ -3169,7 +3170,7 @@ mod tests {
             Token::Punctuation(op.into()),
             Token::Number(m),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_term(),
@@ -3194,7 +3195,7 @@ mod tests {
             Token::Punctuation(op2.into()),
             Token::Number(z),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_term(),
@@ -3212,7 +3213,7 @@ mod tests {
             Token::Ident("asg".to_string()),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_var_decl(),
@@ -3233,7 +3234,7 @@ mod tests {
             Token::Ident("z".to_string()),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
             parser.parse_var_decl(),
@@ -3241,5 +3242,13 @@ mod tests {
                 vars: vec!["x".to_string(), "y".to_string(), "z".to_string()],
             })
         );
+    }
+
+    #[test]
+    fn scanner_error_propagated() {
+        let tokens = vec![Ok(Token::Keyword(Keyword::Main)), Err(InvalidCharError('!'))];
+        let mut parser = Parser::new(tokens.into_iter()).unwrap();
+
+        assert_eq!(parser.parse_computation(), Err(ParseError::InvalidChar(InvalidCharError('!'))));
     }
 }
