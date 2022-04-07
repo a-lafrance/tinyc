@@ -9,42 +9,34 @@ use super::{
     ParseResult
 };
 
-// TokenStream has just been transplanted from the root of the parser module
-// It really needs to be rewritten from the ground up
-// This means reducing its functionality to a set of core methods with actual good names,
-// and also the most elegant internal and external apis possible
-
-// you want to:
-    // expect what type the next token is; consume if it exists, error otherwise
-    // expect exactly what the next token is; if it doesn't match, error
 pub struct TokenStream<T: Iterator<Item = TokenResult>> {
-    current: Option<TokenResult>,
+    current: Option<Token>,
     tokens: T,
 }
 
 impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
-    pub fn new(mut tokens: T) -> TokenStream<T> {
-        TokenStream {
-            current: tokens.next(),
+    pub fn new(mut tokens: T) -> ParseResult<TokenStream<T>> {
+        Ok(TokenStream {
+            current: tokens.next().transpose()?,
             tokens,
-        }
+        })
     }
 
-    pub fn peek(&self) -> Option<&TokenResult> {
+    pub fn peek(&self) -> Option<&Token> {
         self.current.as_ref()
     }
 
-    fn advance(&mut self) -> Option<TokenResult> {
+    fn advance(&mut self) -> ParseResult<Option<Token>> {
         let prev = self.current.take();
-        self.current = self.tokens.next();
+        self.current = self.tokens.next().transpose()?;
 
-        prev
+        Ok(prev)
     }
 
     pub fn try_consume_assign_op(&mut self) -> ParseResult<()> {
         match self.current {
-            Some(Ok(Token::AssignOp)) => {
-                self.advance();
+            Some(Token::AssignOp) => {
+                self.advance()?;
                 Ok(())
             },
             _ => Err(ParseError::ExpectedAssignOp),
@@ -53,8 +45,8 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
 
     pub fn try_consume_matching_keyword(&mut self, target: Keyword) -> ParseResult<()> {
         match self.current {
-            Some(Ok(Token::Keyword(kw))) if kw == target => {
-                self.advance();
+            Some(Token::Keyword(kw)) if kw == target => {
+                self.advance()?;
                 Ok(())
             },
             _ => Err(ParseError::ExpectedKeyword(target)),
@@ -63,8 +55,8 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
 
     pub fn try_consume_relop(&mut self) -> ParseResult<RelOp> {
         match self.current {
-            Some(Ok(Token::RelOp(op))) => {
-                self.advance();
+            Some(Token::RelOp(op)) => {
+                self.advance()?;
                 Ok(op)
             }
 
@@ -74,69 +66,68 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
 
     pub fn try_consume_matching_punctuation(&mut self, target: char) -> ParseResult<()> {
         match self.current {
-            Some(Ok(Token::Punctuation(c))) if c == target => {
-                self.advance();
+            Some(Token::Punctuation(c)) if c == target => {
+                self.advance()?;
                 Ok(())
             }
             _ => Err(ParseError::ExpectedPunctuation(target)),
         }
     }
 
-    pub fn try_consume_number(&mut self) -> Option<u32> {
+    pub fn try_consume_number(&mut self) -> ParseResult<Option<u32>> {
         match self.current {
-            Some(Ok(Token::Number(n))) => {
-                self.advance();
-                Some(n)
+            Some(Token::Number(n)) => {
+                self.advance()?;
+                Ok(Some(n))
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
     pub fn try_consume_ident(&mut self) -> ParseResult<String> {
-        match self.current {
-            Some(Ok(Token::Ident(_))) => match self.advance() {
-                Some(Ok(Token::Ident(ident))) => Ok(ident),
-                _ => unreachable!(),
-            },
+        // it's fine to advance here because if it's not an identifier, an error is thrown so
+        // the token won't be used anyway
+        match self.advance()? {
+            Some(Token::Ident(ident)) => Ok(ident),
             _ => Err(ParseError::ExpectedIdentifier),
         }
     }
 
-    pub fn try_consume_termop(&mut self) -> Option<TermOp> {
+    pub fn try_consume_termop(&mut self) -> ParseResult<Option<TermOp>> {
         match self.current {
-            Some(Ok(Token::Punctuation('+'))) => {
-                self.advance();
-                Some(TermOp::Add)
+            Some(Token::Punctuation('+')) => {
+                self.advance()?;
+                Ok(Some(TermOp::Add))
             }
 
-            Some(Ok(Token::Punctuation('-'))) => {
-                self.advance();
-                Some(TermOp::Sub)
+            Some(Token::Punctuation('-')) => {
+                self.advance()?;
+                Ok(Some(TermOp::Sub))
             }
 
-            _ => None,
+            _ => Ok(None),
         }
     }
 
-    pub fn try_consume_factorop(&mut self) -> Option<FactorOp> {
+    pub fn try_consume_factorop(&mut self) -> ParseResult<Option<FactorOp>> {
         match self.current {
-            Some(Ok(Token::Punctuation('*'))) => {
-                self.advance();
-                Some(FactorOp::Mul)
+            Some(Token::Punctuation('*')) => {
+                self.advance()?;
+                Ok(Some(FactorOp::Mul))
             }
 
-            Some(Ok(Token::Punctuation('/'))) => {
-                self.advance();
-                Some(FactorOp::Div)
+            Some(Token::Punctuation('/')) => {
+                self.advance()?;
+                Ok(Some(FactorOp::Div))
             }
 
-            _ => None,
+            _ => Ok(None),
         }
     }
 
     pub fn try_peek_keyword(&self) -> Option<Keyword> {
         match self.peek() {
-            Some(Ok(Token::Keyword(kw))) => Some(*kw),
+            Some(Token::Keyword(kw)) => Some(*kw),
             _ => None,
         }
     }

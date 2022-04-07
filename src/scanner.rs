@@ -153,7 +153,7 @@ impl<'a> Cursor<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InvalidCharError(char);
+pub struct InvalidCharError(pub char);
 
 impl Display for InvalidCharError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
