@@ -135,6 +135,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.stream.try_consume_matching_keyword(Keyword::Function)?;
         let name = self.stream.try_consume_ident()?;
         self.stream.try_consume_matching_punctuation('(')?;
+        self.sym_table.insert_scope(name.clone());
 
         let params = if self.stream.try_consume_matching_punctuation(')').is_ok() {
             vec![]
@@ -143,15 +144,17 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
             while self.stream.try_consume_matching_punctuation(')').is_err() {
                 self.stream.try_consume_matching_punctuation(',')?;
-
                 params.push(self.stream.try_consume_ident()?);
             }
 
             params
         };
 
+        for param in params.iter().cloned() {
+            self.sym_table.insert_var(&name, param)?;
+        }
+
         self.stream.try_consume_matching_punctuation(';')?;
-        self.sym_table.insert_scope(name.clone());
 
         let mut vars = vec![];
 
