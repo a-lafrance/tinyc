@@ -8,7 +8,7 @@ use crate::{
     },
     scanner::TokenResult,
     semcheck,
-    sym::{SymbolContext, SymbolTable},
+    sym::SymbolTable,
     utils::Keyword,
 };
 pub use self::err::ParseError;
@@ -18,37 +18,41 @@ pub type ParseResult<T> = Result<T, ParseError>;
 
 pub struct Parser<T: Iterator<Item = TokenResult>> {
     stream: TokenStream<T>,
-    sym_context: Option<SymbolContext>,
+    sym_table: SymbolTable,
 }
 
 impl<T: Iterator<Item = TokenResult>> Parser<T> {
     pub fn new(tokens: T) -> ParseResult<Self> {
         Ok(Parser {
             stream: TokenStream::new(tokens)?,
-            sym_context: None,
+            sym_table: SymbolTable::new(),
         })
     }
 
-    pub fn parse_assignment(&mut self) -> ParseResult<Assignment> {
+    #[cfg(test)]
+    pub fn debug(tokens: T) -> ParseResult<Self> {
+        Ok(Parser {
+            stream: TokenStream::new(tokens)?,
+            sym_table: SymbolTable::debug(),
+        })
+    }
+
+    pub fn parse_assignment(&mut self, scope: &str) -> ParseResult<Assignment> {
         self.stream.try_consume_matching_keyword(Keyword::Let)?;
         let place = self.stream.try_consume_ident()?;
         self.stream.try_consume_assign_op()?;
         let value = self.parse_expr()?;
-
-        match self.sym_context {
-            Some(ref sym_context) => semcheck::check_var_is_declared(sym_context, &place)?,
-            None => eprintln!("no symbol context detected when checking assignment"),
-        }
+        semcheck::check_var_is_declared(&self.sym_table, scope, &place)?;
 
         Ok(Assignment { place, value })
     }
 
-    pub fn parse_block(&mut self) -> ParseResult<Block> {
-        let mut body = vec![self.parse_stmt()?];
+    pub fn parse_block(&mut self, scope: &str) -> ParseResult<Block> {
+        let mut body = vec![self.parse_stmt(scope)?];
 
         while self.stream.try_consume_matching_punctuation(';').is_ok() {
             // FIXME: this doesn't feel robust enough
-            if let Ok(stmt) = self.parse_stmt() {
+            if let Ok(stmt) = self.parse_stmt(scope) {
                 body.push(stmt);
             }
         }
@@ -60,24 +64,20 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.stream.try_consume_matching_keyword(Keyword::Main)?;
 
         let scope_name = Keyword::Main.to_string();
-        let mut sym_table = SymbolTable::new();
-        sym_table.insert_func(scope_name.clone());
-
-        let sym_context = SymbolContext::new(sym_table, scope_name);
-        self.sym_context = Some(sym_context);
+        self.sym_table.insert_scope(scope_name.clone());
 
         let mut vars = vec![];
         let mut funcs = vec![];
 
         while let Some(Keyword::Var) = self.stream.try_peek_keyword() {
-            vars.push(self.parse_var_decl()?);
+            vars.push(self.parse_var_decl(&scope_name)?);
         }
 
         while self.stream.try_consume_matching_punctuation('{').is_err() {
             funcs.push(self.parse_func_decl()?);
         }
 
-        let body = self.parse_block()?;
+        let body = self.parse_block(&scope_name)?;
         self.stream.try_consume_matching_punctuation('}')?;
         self.stream.try_consume_matching_punctuation('.')?;
 
@@ -126,11 +126,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             }
         }
 
-        match self.sym_context {
-            Some(ref sym_context) => semcheck::check_func_is_defined(sym_context, &name)?,
-            None => eprintln!("no symbol context detected when checking function call"),
-        }
-
+        semcheck::check_func_is_defined(&self.sym_table, &name)?;
         Ok(FuncCall { name, args })
     }
 
@@ -139,6 +135,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.stream.try_consume_matching_keyword(Keyword::Function)?;
         let name = self.stream.try_consume_ident()?;
         self.stream.try_consume_matching_punctuation('(')?;
+        self.sym_table.insert_scope(name.clone());
 
         let params = if self.stream.try_consume_matching_punctuation(')').is_ok() {
             vec![]
@@ -147,66 +144,46 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
             while self.stream.try_consume_matching_punctuation(')').is_err() {
                 self.stream.try_consume_matching_punctuation(',')?;
-
                 params.push(self.stream.try_consume_ident()?);
             }
 
             params
         };
 
+        for param in params.iter().cloned() {
+            self.sym_table.insert_var(&name, param)?;
+        }
+
         self.stream.try_consume_matching_punctuation(';')?;
-
-        let prev_scope = match self.sym_context {
-            Some(ref mut sym_context) => {
-                sym_context.sym_table_mut().insert_func(name.clone());
-                Some(sym_context.enter_scope(name.clone()))
-            },
-
-            None => {
-                let mut sym_table = SymbolTable::new();
-                sym_table.insert_func(name.clone());
-
-                let sym_context = SymbolContext::new(sym_table, name.clone());
-                self.sym_context = Some(sym_context);
-
-                None
-            },
-        };
 
         let mut vars = vec![];
 
         while self.stream.try_consume_matching_punctuation('{').is_err() {
-            vars.push(self.parse_var_decl()?);
+            vars.push(self.parse_var_decl(&name)?);
         }
 
         let body = if self.stream.try_consume_matching_punctuation('}').is_ok() {
             Block::empty()
         } else {
-            let body = self.parse_block()?;
+            let body = self.parse_block(&name)?;
             self.stream.try_consume_matching_punctuation('}')?;
 
             body
         };
 
-        if let Some(prev_scope) = prev_scope {
-            if let Some(ref mut sym_context) = self.sym_context {
-                sym_context.enter_scope(prev_scope);
-            }
-        }
-
         self.stream.try_consume_matching_punctuation(';')
             .map(|_| FuncDecl { returns_void, name, params, vars, body })
     }
 
-    pub fn parse_if_stmt(&mut self) -> ParseResult<IfStmt> {
+    pub fn parse_if_stmt(&mut self, scope: &str) -> ParseResult<IfStmt> {
         self.stream.try_consume_matching_keyword(Keyword::If)?;
         let condition = self.parse_relation()?;
 
         self.stream.try_consume_matching_keyword(Keyword::Then)?;
-        let then_block = self.parse_block()?;
+        let then_block = self.parse_block(scope)?;
 
         let else_block = if self.stream.try_consume_matching_keyword(Keyword::Else).is_ok() {
-            Some(self.parse_block()?)
+            Some(self.parse_block(scope)?)
         } else {
             None
         };
@@ -220,12 +197,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         })
     }
 
-    pub fn parse_loop(&mut self) -> ParseResult<Loop> {
+    pub fn parse_loop(&mut self, scope: &str) -> ParseResult<Loop> {
         self.stream.try_consume_matching_keyword(Keyword::While)?;
         let condition = self.parse_relation()?;
 
         self.stream.try_consume_matching_keyword(Keyword::Do)?;
-        let body = self.parse_block()?;
+        let body = self.parse_block(scope)?;
 
         self.stream.try_consume_matching_keyword(Keyword::Od)?;
         Ok(Loop { condition, body })
@@ -246,12 +223,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Ok(Return { value })
     }
 
-    pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_stmt(&mut self, scope: &str) -> ParseResult<Stmt> {
         match self.stream.try_peek_keyword() {
-            Some(Keyword::Let) => self.parse_assignment().map(|a| a.into()),
+            Some(Keyword::Let) => self.parse_assignment(scope).map(|a| a.into()),
             Some(Keyword::Call) => self.parse_func_call().map(|c| c.into()),
-            Some(Keyword::If) => self.parse_if_stmt().map(|i| i.into()),
-            Some(Keyword::While) => self.parse_loop().map(|l| l.into()),
+            Some(Keyword::If) => self.parse_if_stmt(scope).map(|i| i.into()),
+            Some(Keyword::While) => self.parse_loop(scope).map(|l| l.into()),
             Some(Keyword::Return) => self.parse_return().map(|r| r.into()),
             _ => Err(ParseError::ExpectedStatement),
         }
@@ -269,27 +246,19 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Ok(Term { root, ops })
     }
 
-    pub fn parse_var_decl(&mut self) -> ParseResult<VarDecl> {
+    pub fn parse_var_decl(&mut self, scope: &str) -> ParseResult<VarDecl> {
         self.stream.try_consume_matching_keyword(Keyword::Var)?;
-        let var = self.stream.try_consume_ident()?;
-
-        match self.sym_context {
-            Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
-            None => eprintln!("no symbol context detected when parsing variable declaration"),
-        }
-
-        let mut vars = vec![var];
+        let mut vars = vec![self.stream.try_consume_ident()?];
 
         while self.stream.try_consume_matching_punctuation(';').is_err() {
             self.stream.try_consume_matching_punctuation(',')?;
             let var = self.stream.try_consume_ident()?;
 
-            match self.sym_context {
-                Some(ref mut sym_context) => sym_context.insert_var_in_scope(var.clone()),
-                None => eprintln!("no symbol context detected when parsing variable declaration"),
-            }
-
             vars.push(var);
+        }
+
+        for var in vars.iter().cloned() {
+            self.sym_table.insert_var(scope, var).ok(); // it's guaranteed for the scope to exist
         }
 
         Ok(VarDecl { vars })
@@ -302,6 +271,7 @@ mod tests {
     use crate::{
         ast::{FactorOp, TermOp},
         scanner::InvalidCharError,
+        sym::SymbolTable,
         tok::Token,
         utils::RelOp,
     };
@@ -321,10 +291,11 @@ mod tests {
             Token::AssignOp,
             Token::Number(val),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, var.clone()).ok();
 
         assert_eq!(
-            parser.parse_assignment(),
+            parser.parse_assignment(SymbolTable::DEBUG_SCOPE),
             Ok(Assignment {
                 place: var,
                 value: Expr {
@@ -340,32 +311,33 @@ mod tests {
 
     #[test]
     fn parse_assignment_complex() {
-        // result = a * 2 + b
+        // result = 1 * 2 + 3
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
-            Token::Ident("a".to_string()),
+            Token::Number(1),
             Token::Punctuation('*'),
             Token::Number(2),
             Token::Punctuation('+'),
-            Token::Ident("b".to_string()),
+            Token::Number(3),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "result".to_string()).ok();
 
         assert_eq!(
-            parser.parse_assignment(),
+            parser.parse_assignment(SymbolTable::DEBUG_SCOPE),
             Ok(Assignment {
                 place: "result".to_string(),
                 value: Expr {
                     root: Term {
-                        root: Factor::VarRef("a".to_string()),
+                        root: Factor::Number(1),
                         ops: vec![(FactorOp::Mul, Factor::Number(2))],
                     },
                     ops: vec![(
                         TermOp::Add,
                         Term {
-                            root: Factor::VarRef("b".to_string()),
+                            root: Factor::Number(3),
                             ops: vec![],
                         }
                     )],
@@ -385,10 +357,11 @@ mod tests {
             Token::AssignOp,
             Token::Number(val),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, var.clone()).unwrap();
 
         assert_eq!(
-            parser.parse_stmt(),
+            parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(Stmt::Assignment(Assignment {
                 place: var,
                 value: Expr {
@@ -1306,7 +1279,8 @@ mod tests {
 
     #[test]
     fn parse_factor_func_call() {
-        let func = "double".to_string();
+        // call OutputNum(5)
+        let func = "OutputNum".to_string();
         let arg = 5;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1334,8 +1308,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_no_args_no_parens() {
-        // call run
-        let func = "run".to_string();
+        // call InputNum()
+        let func = "InputNum".to_string();
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
@@ -1353,8 +1327,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_no_args_with_parens() {
-        // call run()
-        let func = "run".to_string();
+        // call InputNum()
+        let func = "InputNum".to_string();
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
@@ -1374,8 +1348,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_one_arg() {
-        // call square(3)
-        let func = "square".to_string();
+        // call OutputNum(3)
+        let func = "OutputNum".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1415,6 +1389,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
+        parser.sym_table.insert_scope(func.clone());
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1455,6 +1430,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
+        parser.sym_table.insert_scope("max".to_string());
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1489,8 +1465,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_as_stmt() {
-        // call square(3)
-        let func = "square".to_string();
+        // call OutputNum(3)
+        let func = "OutputNum".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1499,10 +1475,10 @@ mod tests {
             Token::Number(arg),
             Token::Punctuation(')'),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_stmt(),
+            parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(Stmt::FuncCall(FuncCall {
                 name: func,
                 args: vec![Expr {
@@ -1960,10 +1936,12 @@ mod tests {
             Token::Number(1),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2030,10 +2008,12 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2119,10 +2099,13 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2219,10 +2202,13 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2316,10 +2302,13 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2432,10 +2421,13 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2541,10 +2533,14 @@ mod tests {
             Token::Number(0),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "result".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_if_stmt(),
+            parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2623,10 +2619,12 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Fi),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_stmt(),
+            parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(Stmt::If(IfStmt {
                 condition: Relation {
                     lhs: Expr {
@@ -2699,10 +2697,11 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_loop(),
+            parser.parse_loop(SymbolTable::DEBUG_SCOPE),
             Ok(Loop {
                 condition: Relation {
                     lhs: Expr {
@@ -2775,10 +2774,12 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_loop(),
+            parser.parse_loop(SymbolTable::DEBUG_SCOPE),
             Ok(Loop {
                 condition: Relation {
                     lhs: Expr {
@@ -2866,10 +2867,13 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_loop(),
+            parser.parse_loop(SymbolTable::DEBUG_SCOPE),
             Ok(Loop {
                 condition: Relation {
                     lhs: Expr {
@@ -2911,7 +2915,7 @@ mod tests {
                                 }
                             )],
                         },
-                    }),],
+                    })],
                 },
             })
         );
@@ -2919,6 +2923,13 @@ mod tests {
 
     #[test]
     fn parse_loop_as_stmt() {
+        /*
+            while a > 0
+            do
+                let a <- a - 1;
+            od
+        */
+
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
@@ -2934,10 +2945,11 @@ mod tests {
             Token::Punctuation(';'),
             Token::Keyword(Keyword::Od),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
 
         assert_eq!(
-            parser.parse_stmt(),
+            parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(Stmt::Loop(Loop {
                 condition: Relation {
                     lhs: Expr {
@@ -3123,10 +3135,10 @@ mod tests {
             Token::Punctuation('+'),
             Token::Number(1),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_stmt(),
+            parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
             Ok(Stmt::Return(Return {
                 value: Some(Expr {
                     root: Term {
@@ -3213,10 +3225,10 @@ mod tests {
             Token::Ident("asg".to_string()),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_var_decl(),
+            parser.parse_var_decl(SymbolTable::DEBUG_SCOPE),
             Ok(VarDecl {
                 vars: vec!["asg".to_string()],
             })
@@ -3234,10 +3246,10 @@ mod tests {
             Token::Ident("z".to_string()),
             Token::Punctuation(';'),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_var_decl(),
+            parser.parse_var_decl(SymbolTable::DEBUG_SCOPE),
             Ok(VarDecl {
                 vars: vec!["x".to_string(), "y".to_string(), "z".to_string()],
             })

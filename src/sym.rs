@@ -10,6 +10,9 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
+    #[cfg(test)]
+    pub const DEBUG_SCOPE: &'static str = "!debug";
+
     pub fn new() -> SymbolTable {
         SymbolTable {
             scopes: hashmap!{
@@ -20,61 +23,34 @@ impl SymbolTable {
         }
     }
 
-    pub fn insert_var(&mut self, func: &str, name: String) -> Result<(), UndefinedSymbolError> {
-        self.scopes.get_mut(func)
-            .ok_or_else(|| UndefinedSymbolError::RefToUndefinedFunc(func.to_string()))
+    #[cfg(test)]
+    pub fn debug() -> SymbolTable {
+        let mut sym_table = SymbolTable::new();
+        sym_table.insert_scope(SymbolTable::DEBUG_SCOPE.to_string());
+
+        sym_table
+    }
+
+    pub fn insert_var(&mut self, scope: &str, name: String) -> Result<(), UndefinedSymbolError> {
+        self.scopes.get_mut(scope)
+            .ok_or_else(|| UndefinedSymbolError::RefToUndefinedFunc(scope.to_string()))
             .map(|vars| {
                 vars.insert(name);
             })
     }
 
-    pub fn contains_var(&self, func: &str, name: &str) -> bool {
-        self.scopes.get(func)
+    pub fn contains_var(&self, scope: &str, name: &str) -> bool {
+        self.scopes.get(scope)
             .map(|vars| vars.contains(name))
             .unwrap_or(false)
     }
 
-    pub fn insert_func(&mut self, name: String) {
+    pub fn insert_scope(&mut self, name: String) {
         self.scopes.insert(name, hashset!{});
     }
 
-    pub fn contains_func(&self, name: &str) -> bool {
+    pub fn contains_scope(&self, name: &str) -> bool {
         self.scopes.contains_key(name)
-    }
-}
-
-
-pub struct SymbolContext {
-    sym_table: SymbolTable,
-    current_scope: String,
-}
-
-impl SymbolContext {
-    pub fn new(sym_table: SymbolTable, current_scope: String) -> SymbolContext {
-        SymbolContext { sym_table, current_scope }
-    }
-
-    pub fn sym_table(&self) -> &SymbolTable {
-        &self.sym_table
-    }
-
-    pub fn sym_table_mut(&mut self) -> &mut SymbolTable {
-        &mut self.sym_table
-    }
-
-    pub fn enter_scope(&mut self, scope: String) -> String {
-        let prev_scope = self.current_scope.clone(); // FIXME: slight inefficiency
-        self.current_scope = scope;
-
-        prev_scope
-    }
-
-    pub fn contains_var_in_scope(&self, name: &str) -> bool {
-        self.sym_table.contains_var(&self.current_scope, name)
-    }
-
-    pub fn insert_var_in_scope(&mut self, name: String) {
-        self.sym_table.insert_var(&self.current_scope, name).ok(); // this will always be true
     }
 }
 
