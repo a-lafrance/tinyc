@@ -289,6 +289,7 @@ mod tests {
             Token::Number(val),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, var.clone()).ok();
 
         assert_eq!(
             parser.parse_assignment(SymbolTable::DEBUG_SCOPE),
@@ -307,18 +308,19 @@ mod tests {
 
     #[test]
     fn parse_assignment_complex() {
-        // result = a * 2 + b
+        // result = 1 * 2 + 3
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Let),
             Token::Ident("result".to_string()),
             Token::AssignOp,
-            Token::Ident("a".to_string()),
+            Token::Number(1),
             Token::Punctuation('*'),
             Token::Number(2),
             Token::Punctuation('+'),
-            Token::Ident("b".to_string()),
+            Token::Number(3),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "result".to_string()).ok();
 
         assert_eq!(
             parser.parse_assignment(SymbolTable::DEBUG_SCOPE),
@@ -326,13 +328,13 @@ mod tests {
                 place: "result".to_string(),
                 value: Expr {
                     root: Term {
-                        root: Factor::VarRef("a".to_string()),
+                        root: Factor::Number(1),
                         ops: vec![(FactorOp::Mul, Factor::Number(2))],
                     },
                     ops: vec![(
                         TermOp::Add,
                         Term {
-                            root: Factor::VarRef("b".to_string()),
+                            root: Factor::Number(3),
                             ops: vec![],
                         }
                     )],
@@ -352,7 +354,8 @@ mod tests {
             Token::AssignOp,
             Token::Number(val),
         ]);
-        let mut parser = Parser::new(tokens).unwrap();
+        let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, var.clone()).unwrap();
 
         assert_eq!(
             parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
@@ -1273,7 +1276,8 @@ mod tests {
 
     #[test]
     fn parse_factor_func_call() {
-        let func = "double".to_string();
+        // call OutputNum(5)
+        let func = "OutputNum".to_string();
         let arg = 5;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1301,8 +1305,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_no_args_no_parens() {
-        // call run
-        let func = "run".to_string();
+        // call InputNum()
+        let func = "InputNum".to_string();
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
@@ -1320,8 +1324,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_no_args_with_parens() {
-        // call run()
-        let func = "run".to_string();
+        // call InputNum()
+        let func = "InputNum".to_string();
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
@@ -1341,8 +1345,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_one_arg() {
-        // call square(3)
-        let func = "square".to_string();
+        // call OutputNum(3)
+        let func = "OutputNum".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1382,6 +1386,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
+        parser.sym_table.insert_scope(func.clone());
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1422,6 +1427,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
+        parser.sym_table.insert_scope("max".to_string());
 
         assert_eq!(
             parser.parse_func_call(),
@@ -1456,8 +1462,8 @@ mod tests {
 
     #[test]
     fn parse_func_call_as_stmt() {
-        // call square(3)
-        let func = "square".to_string();
+        // call OutputNum(3)
+        let func = "OutputNum".to_string();
         let arg = 3;
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
@@ -1928,6 +1934,8 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -1998,6 +2006,8 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2087,6 +2097,9 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2187,6 +2200,9 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2284,6 +2300,9 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2400,6 +2419,9 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2509,6 +2531,10 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "result".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_if_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2591,6 +2617,8 @@ mod tests {
             Token::Keyword(Keyword::Fi),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
@@ -2667,6 +2695,7 @@ mod tests {
             Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_loop(SymbolTable::DEBUG_SCOPE),
@@ -2743,6 +2772,8 @@ mod tests {
             Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_loop(SymbolTable::DEBUG_SCOPE),
@@ -2834,6 +2865,9 @@ mod tests {
             Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "b".to_string()).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "c".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_loop(SymbolTable::DEBUG_SCOPE),
@@ -2878,7 +2912,7 @@ mod tests {
                                 }
                             )],
                         },
-                    }),],
+                    })],
                 },
             })
         );
@@ -2886,6 +2920,13 @@ mod tests {
 
     #[test]
     fn parse_loop_as_stmt() {
+        /*
+            while a > 0
+            do
+                let a <- a - 1;
+            od
+        */
+
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::While),
             Token::Ident("a".to_string()),
@@ -2902,6 +2943,7 @@ mod tests {
             Token::Keyword(Keyword::Od),
         ]);
         let mut parser = Parser::debug(tokens).unwrap();
+        parser.sym_table.insert_var(SymbolTable::DEBUG_SCOPE, "a".to_string()).unwrap();
 
         assert_eq!(
             parser.parse_stmt(SymbolTable::DEBUG_SCOPE),
