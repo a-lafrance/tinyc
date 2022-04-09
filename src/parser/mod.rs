@@ -9,6 +9,7 @@ use crate::{
     scanner::TokenResult,
     semcheck,
     sym::SymbolTable,
+    tok::Token,
     utils::Keyword,
 };
 pub use self::err::ParseError;
@@ -37,6 +38,20 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         })
     }
 
+    fn check_for_factor(&self) -> bool {
+        matches!(
+            self.stream.peek(),
+            Some(Token::Punctuation('(') | Token::Number(_) | Token::Keyword(Keyword::Call) | Token::Ident(_))
+        )
+    }
+
+    fn check_for_stmt(&self) -> bool {
+        matches!(
+            self.stream.try_peek_keyword(),
+            Some(Keyword::Let | Keyword::Call | Keyword::If | Keyword::While | Keyword::Return)
+        )
+    }
+
     pub fn parse_assignment(&mut self, scope: &str) -> ParseResult<Assignment> {
         self.stream.try_consume_matching_keyword(Keyword::Let)?;
         let place = self.stream.try_consume_ident()?;
@@ -51,9 +66,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let mut body = vec![self.parse_stmt(scope)?];
 
         while self.stream.try_consume_matching_punctuation(';').is_ok() {
-            // FIXME: this doesn't feel robust enough
-            if let Ok(stmt) = self.parse_stmt(scope) {
-                body.push(stmt);
+            if self.check_for_stmt() {
+                body.push(self.parse_stmt(scope)?);
             }
         }
 
@@ -218,7 +232,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
     pub fn parse_return(&mut self) -> ParseResult<Return> {
         self.stream.try_consume_matching_keyword(Keyword::Return)?;
-        let value = self.parse_expr().ok(); // FIXME: this is probably very bad (lookahead?)
+        let value = if self.check_for_factor() {
+            // expr starts w/ term, which starts w/ factor, so check_for_factor() checks for expr implicitly
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
 
         Ok(Return { value })
     }
