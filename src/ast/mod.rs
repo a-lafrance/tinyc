@@ -1,3 +1,5 @@
+pub mod visit;
+
 use std::convert::TryFrom;
 use crate::utils::RelOp;
 
