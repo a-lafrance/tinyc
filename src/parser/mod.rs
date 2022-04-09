@@ -39,17 +39,17 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     fn check_for_factor(&self) -> bool {
-        match self.stream.peek() {
-            Some(Token::Punctuation('(') | Token::Number(_) | Token::Keyword(Keyword::Call) | Token::Ident(_)) => true,
-            _ => false,
-        }
+        matches!(
+            self.stream.peek(),
+            Some(Token::Punctuation('(') | Token::Number(_) | Token::Keyword(Keyword::Call) | Token::Ident(_))
+        )
     }
 
     fn check_for_stmt(&self) -> bool {
-        match self.stream.try_peek_keyword() {
-            Some(Keyword::Let | Keyword::Call | Keyword::If | Keyword::While | Keyword::Return) => true,
-            _ => false,
-        }
+        matches!(
+            self.stream.try_peek_keyword(),
+            Some(Keyword::Let | Keyword::Call | Keyword::If | Keyword::While | Keyword::Return)
+        )
     }
 
     pub fn parse_assignment(&mut self, scope: &str) -> ParseResult<Assignment> {
