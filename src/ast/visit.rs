@@ -153,3 +153,535 @@ pub fn walk_term(visitor: &mut impl AstVisitor, term: &Term) {
         visitor.visit_factor(factor);
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    // use an ast visitor that just adds to a giant string
+    // make sure the string matches the expected string at the end
+
+    use super::*;
+    use std::string::ToString;
+    use crate::{ast::{FactorOp, TermOp}, utils::RelOp};
+
+    struct VisitChecker(String);
+
+    impl VisitChecker {
+        pub fn new() -> Self {
+            VisitChecker(String::new())
+        }
+    }
+
+    impl AstVisitor for VisitChecker {
+        fn visit_assignment(&mut self, assign: &Assignment) {
+            self.0.push('a');
+            walk_assignment(self, assign);
+        }
+
+        fn visit_block(&mut self, block: &Block) {
+            self.0.push('b');
+            walk_block(self, block);
+        }
+
+        fn visit_computation(&mut self, comp: &Computation) {
+            self.0.push_str("main");
+            walk_computation(self, comp);
+        }
+
+        fn visit_expr(&mut self, expr: &Expr) {
+            self.0.push('x');
+            walk_expr(self, expr);
+        }
+
+        fn visit_factor(&mut self, factor: &Factor) {
+            self.0.push('f');
+            walk_factor(self, factor);
+        }
+
+        fn visit_func_call(&mut self, call: &FuncCall) {
+            self.0.push_str("fc");
+            walk_func_call(self, call);
+        }
+
+        fn visit_func_decl(&mut self, decl: &FuncDecl) {
+            self.0.push_str("fd");
+            walk_func_decl(self, decl);
+        }
+
+        fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
+            self.0.push_str("if");
+            walk_if_stmt(self, if_stmt);
+        }
+
+        fn visit_loop(&mut self, loop_stmt: &Loop) {
+            self.0.push('l');
+            walk_loop(self, loop_stmt);
+        }
+
+        fn visit_relation(&mut self, relation: &Relation) {
+            self.0.push('r');
+            walk_relation(self, relation);
+        }
+
+        fn visit_return(&mut self, ret: &Return) {
+            self.0.push_str("ret");
+            walk_return(self, ret);
+        }
+
+        fn visit_stmt(&mut self, stmt: &Stmt) {
+            self.0.push('s');
+            walk_stmt(self, stmt);
+        }
+
+        fn visit_term(&mut self, term: &Term) {
+            self.0.push('t');
+            walk_term(self, term);
+        }
+
+        fn visit_var_decl(&mut self, decl: &VarDecl) {
+            self.0.push('v');
+        }
+    }
+
+    #[test]
+    fn walk_assignment_sanity_check() {
+        let mut v = VisitChecker::new();
+        let assign = Assignment {
+            place: "x".to_string(),
+            value: Expr {
+                root: Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                },
+                ops: vec![],
+            }
+        };
+
+        v.visit_assignment(&assign);
+        assert_eq!(v.0, "axtf");
+    }
+
+    #[test]
+    fn walk_block_sanity_check() {
+        let mut v = VisitChecker::new();
+        let block = Block {
+            body: vec![
+                Stmt::Return(Return { value: None }),
+                Stmt::Return(Return { value: None }),
+                Stmt::Return(Return { value: None }),
+            ]
+        };
+
+        v.visit_block(&block);
+        assert_eq!(v.0, "bsretsretsret");
+    }
+
+    #[test]
+    fn walk_computation_sanity_check() {
+        /*
+            main
+            var a;
+            var b;
+
+            void function empty();
+            {
+
+            }
+
+            void function empty2();
+            {
+
+            }
+
+            {
+
+            }.
+        */
+
+        let mut v = VisitChecker::new();
+        let comp = Computation {
+            vars: vec![VarDecl { vars: vec![] }, VarDecl { vars: vec![] }],
+            funcs: vec![
+                FuncDecl {
+                    returns_void: true,
+                    name: "empty".to_string(),
+                    params: vec![],
+                    vars: vec![],
+                    body: Block::empty(),
+                },
+                FuncDecl {
+                    returns_void: true,
+                    name: "empty2".to_string(),
+                    params: vec![],
+                    vars: vec![],
+                    body: Block::empty(),
+                },
+            ],
+            body: Block::empty()
+        };
+
+        v.visit_computation(&comp);
+        assert_eq!(v.0, "mainvvfdbfdbb");
+    }
+
+    #[test]
+    fn walk_expr_single_term_sanity_check() {
+        let mut v = VisitChecker::new();
+        let expr = Expr {
+            root: Term {
+                root: Factor::Number(2),
+                ops: vec![],
+            },
+            ops: vec![]
+        };
+
+        v.visit_expr(&expr);
+        assert_eq!(v.0, "xtf");
+    }
+
+    #[test]
+    fn walk_expr_many_terms_sanity_check() {
+        let mut v = VisitChecker::new();
+        let expr = Expr {
+            root: Term {
+                root: Factor::Number(2),
+                ops: vec![],
+            },
+            ops: vec![
+                (TermOp::Add, Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                })
+            ]
+        };
+
+        v.visit_expr(&expr);
+        assert_eq!(v.0, "xtftf");
+    }
+
+    #[test]
+    fn walk_factor_subexpr_sanity_check() {
+        let mut v = VisitChecker::new();
+        let factor = Factor::SubExpr(Box::new(Expr {
+            root: Term {
+                root: Factor::Number(1),
+                ops: vec![],
+            },
+            ops: vec![],
+        }));
+
+        v.visit_factor(&factor);
+        assert_eq!(v.0, "fxtf");
+    }
+
+    #[test]
+    fn walk_factor_func_call_sanity_check() {
+        let mut v = VisitChecker::new();
+        let factor = Factor::Call(FuncCall {
+            name: "InputNum".to_string(),
+            args: vec![]
+        });
+
+        v.visit_factor(&factor);
+        assert_eq!(v.0, "ffc");
+    }
+
+    #[test]
+    fn walk_func_call_sanity_check() {
+        let mut v = VisitChecker::new();
+        let call = FuncCall {
+            name: "add".to_string(),
+            args: vec![
+                Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                    },
+                Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+            ],
+        };
+
+        v.visit_func_call(&call);
+        assert_eq!(v.0, "fcxtfxtf");
+    }
+
+    #[test]
+    fn walk_func_decl_sanity_check() {
+        let mut v = VisitChecker::new();
+        let decl = FuncDecl {
+            returns_void: true,
+            name: "empty".to_string(),
+            params: vec![],
+            vars: vec![VarDecl::empty(), VarDecl::empty()],
+            body: Block::empty(),
+        };
+
+        v.visit_func_decl(&decl);
+        assert_eq!(v.0, "fdvvb");
+    }
+
+    #[test]
+    fn walk_if_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let if_stmt = IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Eq,
+            },
+            then_block: Block::empty(),
+            else_block: Some(Block::empty()),
+        };
+
+        v.visit_if_stmt(&if_stmt);
+        assert_eq!(v.0, "ifrxtfxtfbb");
+    }
+
+    #[test]
+    fn walk_if_stmt_no_else_sanity_check() {
+        let mut v = VisitChecker::new();
+        let if_stmt = IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Eq,
+            },
+            then_block: Block::empty(),
+            else_block: None,
+        };
+
+        v.visit_if_stmt(&if_stmt);
+        assert_eq!(v.0, "ifrxtfxtfb");
+    }
+
+    #[test]
+    fn walk_loop_sanity_check() {
+        let mut v = VisitChecker::new();
+        let loop_stmt = Loop {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Eq,
+            },
+            body: Block::empty(),
+        };
+
+        v.visit_loop(&loop_stmt);
+        assert_eq!(v.0, "lrxtfxtfb");
+    }
+
+    #[test]
+    fn walk_relation_sanity_check() {
+        let mut v = VisitChecker::new();
+        let relation = Relation {
+            lhs: Expr {
+                root: Term {
+                    root: Factor::VarRef("x".to_string()),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            rhs: Expr {
+                root: Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            op: RelOp::Eq,
+        };
+
+        v.visit_relation(&relation);
+        assert_eq!(v.0, "rxtfxtf");
+    }
+
+    #[test]
+    fn walk_return_sanity_check() {
+        let mut v = VisitChecker::new();
+        let ret = Return {
+            value: Some(Expr {
+                root: Term {
+                    root: Factor::VarRef("x".to_string()),
+                    ops: vec![],
+                },
+                ops: vec![],
+            }),
+        };
+
+        v.visit_return(&ret);
+        assert_eq!(v.0, "retxtf");
+    }
+
+    #[test]
+    fn walk_return_no_val_sanity_check() {
+        let mut v = VisitChecker::new();
+        let ret = Return { value: None };
+
+        v.visit_return(&ret);
+        assert_eq!(v.0, "ret");
+    }
+
+    #[test]
+    fn walk_assignment_as_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let stmt = Stmt::Assignment(Assignment {
+            place: "x".to_string(),
+            value: Expr {
+                root: Term {
+                    root: Factor::Number(1),
+                    ops: vec![],
+                },
+                ops: vec![],
+            }
+        });
+
+        v.visit_stmt(&stmt);
+        assert_eq!(v.0, "saxtf");
+    }
+
+    #[test]
+    fn walk_func_call_as_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let stmt = Stmt::FuncCall(FuncCall {
+            name: "InputNum".to_string(),
+            args: vec![],
+        });
+
+        v.visit_stmt(&stmt);
+        assert_eq!(v.0, "sfc");
+    }
+
+    #[test]
+    fn walk_if_as_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let stmt = Stmt::If(IfStmt {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Eq,
+            },
+            then_block: Block::empty(),
+            else_block: None,
+        });
+
+        v.visit_stmt(&stmt);
+        assert_eq!(v.0, "sifrxtfxtfb");
+    }
+
+    #[test]
+    fn walk_loop_as_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let stmt = Stmt::Loop(Loop {
+            condition: Relation {
+                lhs: Expr {
+                    root: Term {
+                        root: Factor::VarRef("x".to_string()),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                rhs: Expr {
+                    root: Term {
+                        root: Factor::Number(1),
+                        ops: vec![],
+                    },
+                    ops: vec![],
+                },
+                op: RelOp::Eq,
+            },
+            body: Block::empty(),
+        });
+
+        v.visit_stmt(&stmt);
+        assert_eq!(v.0, "slrxtfxtfb");
+    }
+
+    #[test]
+    fn walk_return_as_stmt_sanity_check() {
+        let mut v = VisitChecker::new();
+        let stmt = Stmt::Return(Return { value: None });
+
+        v.visit_stmt(&stmt);
+        assert_eq!(v.0, "sret");
+    }
+
+    #[test]
+    fn walk_term_single_factor_sanity_check() {
+        let mut v = VisitChecker::new();
+        let term = Term {
+            root: Factor::Number(1),
+            ops: vec![],
+        };
+
+        v.visit_term(&term);
+        assert_eq!(v.0, "tf");
+    }
+
+    #[test]
+    fn walk_term_many_factors_sanity_check() {
+        let mut v = VisitChecker::new();
+        let term = Term {
+            root: Factor::Number(1),
+            ops: vec![(FactorOp::Mul, Factor::Number(2))],
+        };
+
+        v.visit_term(&term);
+        assert_eq!(v.0, "tff");
+    }
+}

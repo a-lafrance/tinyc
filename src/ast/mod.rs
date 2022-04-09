@@ -26,6 +26,13 @@ pub struct VarDecl {
     pub vars: Vec<String>,
 }
 
+impl VarDecl {
+    #[cfg(test)]
+    pub fn empty() -> VarDecl {
+        VarDecl { vars: vec![] }
+    }
+}
+
 /* EXPRESSIONS */
 
 #[derive(Clone, Debug, PartialEq)]
