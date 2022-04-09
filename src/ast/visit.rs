@@ -56,6 +56,7 @@ pub trait AstVisitor: Sized {
         walk_term(self, term);
     }
 
+    // i don't think this will ever be useful, beyond maybe printing the ast
     fn visit_var_decl(&mut self, decl: &VarDecl);
 }
 

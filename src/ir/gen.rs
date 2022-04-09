@@ -44,10 +44,10 @@
 
 use std::collections::HashMap;
 use crate::ast::{
-    Assignment, Computation, Factor, VarDecl,
+    Assignment, Computation, Factor, FactorOp, Term, VarDecl,
     visit::{self, AstVisitor},
 };
-use super::{BasicBlock, IrStore, Value};
+use super::{BasicBlock, InstructionData, IrStore, StoredBinaryOpcode, Value};
 
 pub struct IrGenerator {
     store: IrStore,
@@ -61,6 +61,7 @@ impl IrGenerator {
     pub fn gen(ast: &Computation) -> IrStore {
         let mut gen = IrGenerator::new();
         gen.visit_computation(ast);
+        // convert the const allocator into a basic block
 
         gen.store
     }
@@ -157,14 +158,32 @@ impl AstVisitor for IrGenerator {
     // fn visit_stmt(&mut self, stmt: &Stmt) {
     //     walk_stmt(self, stmt);
     // }
-    //
-    // fn visit_term(&mut self, term: &Term) {
-    //     walk_term(self, term);
-    // }
 
-    fn visit_var_decl(&mut self, decl: &VarDecl) {
+    fn visit_term(&mut self, term: &Term) {
+        self.visit_factor(&term.root);
 
+        for (op, factor) in term.ops.iter() {
+            let lhs = self.last_val.expect("invariant violated: expected expr");
+            self.visit_factor(factor);
+            let rhs = self.last_val.expect("invariant violated: expected expr");
+            let result = self.alloc_val();
+            let instr = InstructionData::StoredBinaryOp {
+                opcode: StoredBinaryOpcode::from(*op),
+                src1: lhs,
+                src2: rhs,
+                dest: result,
+            };
+
+            eprintln!("gen instr: {}", instr);
+
+            // somehow add the instr to both the store and the bb
+            self.last_val = Some(result)
+        }
+
+        // ^ expr will literally be exactly that but slightly different
     }
+
+    fn visit_var_decl(&mut self, decl: &VarDecl) { }
 }
 
 
@@ -183,7 +202,7 @@ impl ConstAllocator {
         self.0.insert(n, val);
     }
 
-    pub fn to_basic_block(self) -> BasicBlock {
+    pub fn to_basic_block(self, _ctx: &mut IrGenerator) -> BasicBlock {
         todo!()
     }
 }

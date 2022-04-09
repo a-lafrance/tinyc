@@ -1,8 +1,9 @@
 main
-var a, b, c;
+var a, b, c, d;
 
 {
     let a <- 1;
     let b <- 2;
     let c <- a;
+    let d <- a * b * c;
 }.
