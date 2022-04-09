@@ -21,6 +21,9 @@ pub struct FuncDecl {
     pub body: Block,
 }
 
+// TODO: i'm pretty sure we can eliminate this entirely. it carries no useful semantic info beyond defining symbols,
+// which can be confined solely to parsing. no one after the parser needs to care about what vars were declared,
+// so this doesn't carry any useful info beyond the act of parsing and checking if a symbol is defined
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarDecl {
     pub vars: Vec<String>,

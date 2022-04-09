@@ -72,3 +72,15 @@ impl FromStr for Keyword {
         }
     }
 }
+
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Builtin {
+    InputNum, OutputNum, OutputNewLine,
+}
+
+impl Display for Builtin {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}

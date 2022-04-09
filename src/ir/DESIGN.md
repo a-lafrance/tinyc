@@ -5,7 +5,7 @@
 * `sub x, y`: subtracts
 * `cmp x, y`: compares the two numbers, producing one of six outcomes: ==, !=, >, >=, <, <=
 * a bunch of branch instructions
-    * `b dest` (unconditional branch, for jumping to a join block)
+    * `br dest` (unconditional branch, for jumping to a join block)
     * `beq dest`
     * `bne dest`
     * `bgt dest`
@@ -19,6 +19,7 @@
 * `phi x, y`: phi instruction, like in class
 * `end`: terminate the program
     * is this necessary?
+* `nop`: no-op instruction, good for placeholders
 
 Instructions to handle function calls, required for step 3:
 * `ret [x]`: return, optionally with value
@@ -43,3 +44,6 @@ Instructions to handle function calls, required for step 3:
         * must be optional for the same reason as above (this also helps the prelude block)
 * there will be a special "prelude" basic block used for allocating constants
     * this block will fallthrough into the "real" first block, ie the first non-prelude block
+
+# Edge Cases
+* Instructions that modify and assign to the same variable: `let a <- a + 1`

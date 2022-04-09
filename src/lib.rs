@@ -7,7 +7,10 @@ pub(crate) mod sym;
 pub(crate) mod tok;
 pub(crate) mod utils;
 
-use self::parser::Parser;
+use self::{
+    ir::IrStore,
+    parser::Parser,
+};
 use clap::Parser as ArgParse;
 use std::{ffi::OsString, fs::File, io::Read};
 
@@ -37,7 +40,11 @@ where
     let tokens = scanner::tokenize(&input);
 
     match Parser::new(tokens).and_then(|mut p| p.parse_computation()) {
-        Ok(ast) => println!("{:?}", ast),
-        Err(e) => eprintln!("parse error: {}", e),
+        Ok(ast) => {
+            let ir = IrStore::from(ast);
+            println!("generated ir: {:?}", ir);
+        },
+
+        Err(e) => eprintln!("error: {}", e),
     };
 }

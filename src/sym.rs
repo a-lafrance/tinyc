@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 use maplit::{hashmap, hashset};
+use crate::utils::Builtin;
 
 pub struct SymbolTable {
     scopes: HashMap<String, HashSet<String>>,
@@ -16,9 +17,9 @@ impl SymbolTable {
     pub fn new() -> SymbolTable {
         SymbolTable {
             scopes: hashmap!{
-                "InputNum".to_string() => hashset!{},
-                "OutputNum".to_string() => hashset!{},
-                "OutputNewLine".to_string() => hashset!{},
+                Builtin::InputNum.to_string() => hashset!{},
+                Builtin::OutputNum.to_string() => hashset!{},
+                Builtin::OutputNewLine.to_string() => hashset!{},
             }
         }
     }
