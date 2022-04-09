@@ -1,4 +1,5 @@
 pub(crate) mod ast;
+pub(crate) mod ir;
 pub(crate) mod parser;
 pub(crate) mod scanner;
 pub(crate) mod semcheck;

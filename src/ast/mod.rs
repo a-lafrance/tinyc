@@ -1,3 +1,5 @@
+pub mod visit;
+
 use std::convert::TryFrom;
 use crate::utils::RelOp;
 
@@ -22,6 +24,13 @@ pub struct FuncDecl {
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarDecl {
     pub vars: Vec<String>,
+}
+
+impl VarDecl {
+    #[cfg(test)]
+    pub fn empty() -> VarDecl {
+        VarDecl { vars: vec![] }
+    }
 }
 
 /* EXPRESSIONS */
