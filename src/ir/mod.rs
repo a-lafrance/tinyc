@@ -28,9 +28,7 @@ impl IrStore {
     pub fn push_instr(&mut self, block: BasicBlock, instr_data: InstructionData) -> Instruction {
         self.instrs.push(instr_data);
         let instr = Instruction(self.instrs.len() - 1);
-
-        let bb_data = self.blocks[block];
-        bb_data.push_instr(instr);
+        self.blocks[block.0].push_instr(instr);
 
         instr
     }

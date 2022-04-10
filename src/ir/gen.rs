@@ -43,9 +43,12 @@
     // else, unimplemented error
 
 use std::collections::HashMap;
-use crate::ast::{
-    Assignment, Computation, Expr, Factor, Term, VarDecl,
-    visit::{self, AstVisitor},
+use crate::{
+    ast::{
+        Assignment, Computation, Expr, Factor, FuncCall, FuncDecl, Relation, Term, VarDecl,
+        visit::{self, AstVisitor},
+    },
+    utils::Builtin,
 };
 use super::{BasicBlock, InstructionData, IrStore, StoredBinaryOpcode, Value};
 
@@ -112,11 +115,6 @@ impl AstVisitor for IrGenerator {
     //     walk_block(self, block);
     // }
 
-    fn visit_computation(&mut self, comp: &Computation) {
-        // TODO: this will come later, ignore func/var decls for now
-        // walk_computation(self, comp);
-    }
-
     fn visit_expr(&mut self, expr: &Expr) {
         self.visit_term(&expr.root);
 
@@ -132,7 +130,7 @@ impl AstVisitor for IrGenerator {
                 dest: result,
             };
 
-            eprintln!("gen instr: {}", instr);
+            eprintln!("{}", instr);
 
             // TODO: somehow add the instr to both the store and the bb
             self.last_val = Some(result)
@@ -145,21 +143,28 @@ impl AstVisitor for IrGenerator {
             Factor::Number(n) => self.load_const(*n),
             _ => visit::walk_factor(self, factor),
         }
-
-        match self.last_val {
-            Some(ref val) => eprintln!("loaded {}", val),
-            None => eprintln!("no val loaded"),
-        }
     }
 
-    // fn visit_func_call(&mut self, call: &FuncCall) {
-    //     walk_func_call(self, call);
-    // }
-    //
-    // fn visit_func_decl(&mut self, decl: &FuncDecl) {
-    //     walk_func_decl(self, decl);
-    // }
-    //
+    fn visit_func_call(&mut self, call: &FuncCall) {
+        let instr = match Builtin::from(&call.name) {
+            Some(Builtin::InputNum) => InstructionData::Read(self.alloc_val()),
+            Some(Builtin::OutputNum) => {
+                self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
+                InstructionData::Write(self.last_val.expect("invariant violated: expected expr"))
+            },
+            Some(Builtin::OutputNewLine) => InstructionData::Writeln,
+            None => unimplemented!(),
+        };
+
+        // TODO: add instr to store
+        eprintln!("{}", instr);
+    }
+
+    fn visit_func_decl(&mut self, _decl: &FuncDecl) {
+        // FIXME: ignore for now
+        // walk_func_decl(self, decl);
+    }
+
     // fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
     //     walk_if_stmt(self, if_stmt);
     // }
@@ -172,14 +177,15 @@ impl AstVisitor for IrGenerator {
         // gen lhs ir
         // lhs = last val
         self.visit_expr(&relation.lhs);
-        let lhs = self.last_val;
+        let lhs = self.last_val.expect("invariant violated: expected expr");
 
         // gen rhs ir
         // rhs = last val
         self.visit_expr(&relation.rhs);
-        let rhs = self.last_val;
+        let rhs = self.last_val.expect("invariant violated: expected expr");
 
         let instr = InstructionData::Cmp(lhs, rhs);
+        eprintln!("{}", instr);
         // TODO: add to store
 
         // what to do w/ relop?
@@ -209,7 +215,7 @@ impl AstVisitor for IrGenerator {
                 dest: result,
             };
 
-            eprintln!("gen instr: {}", instr);
+            eprintln!("{}", instr);
 
             // TODO: somehow add the instr to both the store and the bb
             self.last_val = Some(result)

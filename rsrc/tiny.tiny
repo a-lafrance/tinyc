@@ -5,5 +5,11 @@ var a, b, c, d;
     let a <- 1;
     let b <- 2;
     let c <- a;
-    let d <- a + b * c;
+    let d <- call InputNum();
+
+    if a + b > c + d
+    then
+        call OutputNum(a * 2);
+        call OutputNewLine();
+    fi;
 }.
