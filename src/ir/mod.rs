@@ -17,6 +17,23 @@ impl IrStore {
             blocks: vec![],
         }
     }
+
+    pub fn make_basic_block(&mut self) -> BasicBlock {
+        let block = BasicBlockData::new();
+        self.blocks.push(block);
+
+        BasicBlock(self.blocks.len() - 1)
+    }
+
+    pub fn push_instr(&mut self, block: BasicBlock, instr_data: InstructionData) -> Instruction {
+        self.instrs.push(instr_data);
+        let instr = Instruction(self.instrs.len() - 1);
+
+        let bb_data = self.blocks[block];
+        bb_data.push_instr(instr);
+
+        instr
+    }
 }
 
 impl From<Computation> for IrStore {
@@ -119,6 +136,20 @@ pub struct BasicBlockData {
     body: Vec<Instruction>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
+}
+
+impl BasicBlockData {
+    pub fn new() -> BasicBlockData {
+        BasicBlockData {
+            body: vec![],
+            fallthrough_dest: None,
+            branch_dest: None,
+        }
+    }
+
+    pub fn push_instr(&mut self, instr: Instruction) {
+        self.body.push(instr);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

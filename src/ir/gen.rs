@@ -55,6 +55,7 @@ pub struct IrGenerator {
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
     next_val: Value,
+    current_block: Option<BasicBlock>,
 }
 
 impl IrGenerator {
@@ -73,6 +74,7 @@ impl IrGenerator {
             const_alloc: ConstAllocator::new(),
             last_val: None,
             next_val: Value(0),
+            current_block: None,
         }
     }
 
@@ -109,10 +111,11 @@ impl AstVisitor for IrGenerator {
     // fn visit_block(&mut self, block: &Block) {
     //     walk_block(self, block);
     // }
-    //
-    // fn visit_computation(&mut self, comp: &Computation) {
-    //     walk_computation(self, comp);
-    // }
+
+    fn visit_computation(&mut self, comp: &Computation) {
+        // TODO: this will come later, ignore func/var decls for now
+        // walk_computation(self, comp);
+    }
 
     fn visit_expr(&mut self, expr: &Expr) {
         self.visit_term(&expr.root);
@@ -164,11 +167,25 @@ impl AstVisitor for IrGenerator {
     // fn visit_loop(&mut self, loop_stmt: &Loop) {
     //     walk_loop(self, loop_stmt);
     // }
-    //
-    // fn visit_relation(&mut self, relation: &Relation) {
-    //     walk_relation(self, relation);
-    // }
-    //
+
+    fn visit_relation(&mut self, relation: &Relation) {
+        // gen lhs ir
+        // lhs = last val
+        self.visit_expr(&relation.lhs);
+        let lhs = self.last_val;
+
+        // gen rhs ir
+        // rhs = last val
+        self.visit_expr(&relation.rhs);
+        let rhs = self.last_val;
+
+        let instr = InstructionData::Cmp(lhs, rhs);
+        // TODO: add to store
+
+        // what to do w/ relop?
+            // we'll need it to know which branch to pick, but that seems like something to be handled elsewhere
+    }
+
     // fn visit_return(&mut self, ret: &Return) {
     //     walk_return(self, ret);
     // }
@@ -199,7 +216,7 @@ impl AstVisitor for IrGenerator {
         }
     }
 
-    fn visit_var_decl(&mut self, decl: &VarDecl) { }
+    fn visit_var_decl(&mut self, _: &VarDecl) { }
 }
 
 
