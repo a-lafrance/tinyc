@@ -65,7 +65,7 @@ impl IrGenerator {
     pub fn gen(ast: &Computation) -> IrStore {
         let mut gen = IrGenerator::new();
         gen.visit_computation(ast);
-        // TODO: convert the const allocator into a basic block
+        gen.const_alloc.make_prelude_block(&mut gen.store);
 
         gen.store
     }
@@ -79,6 +79,14 @@ impl IrGenerator {
             next_val: Value(0),
             current_block: None,
         }
+    }
+
+    pub fn store(&self) -> &IrStore {
+        &self.store
+    }
+
+    pub fn store_mut(&mut self) -> &mut IrStore {
+        &mut self.store
     }
 
     pub(self) fn alloc_val(&mut self) -> Value {
@@ -120,8 +128,11 @@ impl AstVisitor for IrGenerator {
     fn visit_computation(&mut self, comp: &Computation) {
         visit::walk_computation(self, comp);
 
+        let main_block = self.current_block.expect("invariant violated: missing main block");
+
+        self.store.root_block_mut().insert(main_block);
         self.store.push_instr(
-            self.current_block.expect("invariant violated: missing main block"),
+            main_block,
             InstructionData::End
         );
     }
@@ -246,7 +257,17 @@ impl ConstAllocator {
         self.0.insert(n, val);
     }
 
-    pub fn to_basic_block(self, _ctx: &mut IrGenerator) -> BasicBlock {
-        todo!()
+    pub fn make_prelude_block(&self, store: &mut IrStore) {
+        let prelude_block = store.make_new_basic_block();
+
+        for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
+            store.push_instr(prelude_block, InstructionData::Const(n, val));
+        }
+
+        let root = *store.root_block();
+        let prelude_block_data = store.basic_block_data_mut(prelude_block);
+        *prelude_block_data.fallthrough_dest_mut() = root;
+
+        *store.root_block_mut() = Some(prelude_block);
     }
 }

@@ -8,7 +8,7 @@ use self::gen::IrGenerator;
 pub struct IrStore {
     instrs: Vec<InstructionData>,
     blocks: Vec<BasicBlockData>,
-    // TODO: some way to specify the entry block, ie the cfg root
+    root: Option<BasicBlock>,
 }
 
 impl IrStore {
@@ -16,7 +16,24 @@ impl IrStore {
         IrStore {
             instrs: vec![],
             blocks: vec![],
+            root: None,
         }
+    }
+
+    pub fn root_block(&self) -> &Option<BasicBlock> {
+        &self.root
+    }
+
+    pub fn root_block_mut(&mut self) -> &mut Option<BasicBlock> {
+        &mut self.root
+    }
+
+    pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
+        &self.blocks[bb.0]
+    }
+
+    pub fn basic_block_data_mut(&mut self, bb: BasicBlock) -> &mut BasicBlockData {
+        &mut self.blocks[bb.0]
     }
 
     pub fn make_new_basic_block(&mut self) -> BasicBlock {
@@ -46,7 +63,7 @@ pub struct Instruction(usize);
 
 #[derive(Debug)]
 pub enum InstructionData {
-    Const(u32),
+    Const(u32, Value),
     Cmp(Value, Value),
     Branch(BranchOpcode, BasicBlock),
     StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
@@ -60,7 +77,7 @@ pub enum InstructionData {
 impl Display for InstructionData {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            InstructionData::Const(n) => write!(f, "const {}", n),
+            InstructionData::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             InstructionData::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             InstructionData::Branch(opcode, dest) => write!(f, "{} TODO", opcode),
             InstructionData::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
@@ -148,6 +165,14 @@ impl BasicBlockData {
 
     pub fn push_instr(&mut self, instr: Instruction) {
         self.body.push(instr);
+    }
+
+    pub fn fallthrough_dest(&self) -> &Option<BasicBlock> {
+        &self.fallthrough_dest
+    }
+
+    pub fn fallthrough_dest_mut(&mut self) -> &mut Option<BasicBlock> {
+        &mut self.fallthrough_dest
     }
 }
 
