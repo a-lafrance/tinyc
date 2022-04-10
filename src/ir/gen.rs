@@ -1,51 +1,7 @@
-/*
-    main
-    var a, b, c, n;
-
-    {
-        let a <- call InputNum();
-        let b <- call InputNum();
-        let n <- 2;
-        let c <- a + b;
-        call OutputNum(c * n);
-        call OutputNL();
-    }.
-*/
-
-// BB0:
-// a = $0
-// b = $1
-// c = $2
-    // $0 = read
-    // $1 = read
-    // $2 = add $0, $1
-    // $4 = mul $2, $3
-    // write $4
-    // writeln
-// const map:
-// n = $3
-    // $3 = const 2
-
-// final IR:
-// BBp: "Basic Block Prelude"
-    // $3 = const 2
-// BB0:
-    // $0 = read
-    // $1 = read
-    // $2 = add $0, $1
-    // $4 = mul $2, $3
-    // write $4
-    // writeln
-    // end
-
-// func call:
-    // if builtin, generate io primitive instr
-    // else, unimplemented error
-
 use std::collections::HashMap;
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, Relation, Term, VarDecl,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Relation, Term, VarDecl,
         visit::{self, AstVisitor},
     },
     utils::Builtin,
@@ -120,9 +76,14 @@ impl AstVisitor for IrGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) {
-        // make new block, set current block
-        self.current_block = Some(self.store.make_new_basic_block());
-        visit::walk_block(self, block);
+        let new_block = self.store.make_new_basic_block();
+        self.current_block = Some(new_block);
+
+        if block.is_empty() {
+            self.store.push_instr(new_block, InstructionData::Nop);
+        } else {
+            visit::walk_block(self, block);
+        }
     }
 
     fn visit_computation(&mut self, comp: &Computation) {
@@ -190,10 +151,14 @@ impl AstVisitor for IrGenerator {
         // walk_func_decl(self, decl);
     }
 
-    // fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
-    //     walk_if_stmt(self, if_stmt);
-    // }
-    //
+    fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
+        // check condition in current block
+        // generate branch instr in current block
+        // save current block for use later
+        // visit then block
+
+    }
+
     // fn visit_loop(&mut self, loop_stmt: &Loop) {
     //     walk_loop(self, loop_stmt);
     // }
