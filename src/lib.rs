@@ -45,6 +45,6 @@ where
             println!("generated ir: {:?}", ir);
         },
 
-        Err(e) => eprintln!("error: {}", e),
+        Err(e) => eprintln!("\x1b[31merror\x1b[0m: {}", e),
     };
 }

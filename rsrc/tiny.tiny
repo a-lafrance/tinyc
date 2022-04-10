@@ -1,15 +1,12 @@
 main
-var a, b, c, d;
+var a, b, c, d, e;
 
 {
     let a <- 1;
     let b <- 2;
     let c <- a;
     let d <- call InputNum();
-
-    if a + b > c + d
-    then
-        call OutputNum(a * 2);
-        call OutputNewLine();
-    fi;
+    let e <- a + b + c + d;
+    call OutputNum(e);
+    call OutputNewLine();
 }.

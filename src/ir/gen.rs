@@ -45,7 +45,7 @@
 use std::collections::HashMap;
 use crate::{
     ast::{
-        Assignment, Computation, Expr, Factor, FuncCall, FuncDecl, Relation, Term, VarDecl,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, Relation, Term, VarDecl,
         visit::{self, AstVisitor},
     },
     utils::Builtin,
@@ -111,9 +111,20 @@ impl AstVisitor for IrGenerator {
         );
     }
 
-    // fn visit_block(&mut self, block: &Block) {
-    //     walk_block(self, block);
-    // }
+    fn visit_block(&mut self, block: &Block) {
+        // make new block, set current block
+        self.current_block = Some(self.store.make_new_basic_block());
+        visit::walk_block(self, block);
+    }
+
+    fn visit_computation(&mut self, comp: &Computation) {
+        visit::walk_computation(self, comp);
+
+        self.store.push_instr(
+            self.current_block.expect("invariant violated: missing main block"),
+            InstructionData::End
+        );
+    }
 
     fn visit_expr(&mut self, expr: &Expr) {
         self.visit_term(&expr.root);
@@ -130,10 +141,11 @@ impl AstVisitor for IrGenerator {
                 dest: result,
             };
 
-            eprintln!("{}", instr);
-
-            // TODO: somehow add the instr to both the store and the bb
-            self.last_val = Some(result)
+            self.last_val = Some(result);
+            self.store.push_instr(
+                self.current_block.expect("invariant violated: expr must be in block"),
+                instr
+            );
         }
     }
 
@@ -156,8 +168,10 @@ impl AstVisitor for IrGenerator {
             None => unimplemented!(),
         };
 
-        // TODO: add instr to store
-        eprintln!("{}", instr);
+        self.store.push_instr(
+            self.current_block.expect("invariant violated: func call must be in block"),
+            instr
+        );
     }
 
     fn visit_func_decl(&mut self, _decl: &FuncDecl) {
@@ -174,30 +188,20 @@ impl AstVisitor for IrGenerator {
     // }
 
     fn visit_relation(&mut self, relation: &Relation) {
-        // gen lhs ir
-        // lhs = last val
         self.visit_expr(&relation.lhs);
         let lhs = self.last_val.expect("invariant violated: expected expr");
 
-        // gen rhs ir
-        // rhs = last val
         self.visit_expr(&relation.rhs);
         let rhs = self.last_val.expect("invariant violated: expected expr");
 
-        let instr = InstructionData::Cmp(lhs, rhs);
-        eprintln!("{}", instr);
-        // TODO: add to store
-
-        // what to do w/ relop?
-            // we'll need it to know which branch to pick, but that seems like something to be handled elsewhere
+        self.store.push_instr(
+            self.current_block.expect("invariant violated: func call must be in block"),
+            InstructionData::Cmp(lhs, rhs)
+        );
     }
 
     // fn visit_return(&mut self, ret: &Return) {
     //     walk_return(self, ret);
-    // }
-    //
-    // fn visit_stmt(&mut self, stmt: &Stmt) {
-    //     walk_stmt(self, stmt);
     // }
 
     fn visit_term(&mut self, term: &Term) {
@@ -215,10 +219,11 @@ impl AstVisitor for IrGenerator {
                 dest: result,
             };
 
-            eprintln!("{}", instr);
-
-            // TODO: somehow add the instr to both the store and the bb
-            self.last_val = Some(result)
+            self.last_val = Some(result);
+            self.store.push_instr(
+                self.current_block.expect("invariant violated: term must be in block"),
+                instr
+            );
         }
     }
 

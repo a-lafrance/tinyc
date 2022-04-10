@@ -8,6 +8,7 @@ use self::gen::IrGenerator;
 pub struct IrStore {
     instrs: Vec<InstructionData>,
     blocks: Vec<BasicBlockData>,
+    // TODO: some way to specify the entry block, ie the cfg root
 }
 
 impl IrStore {
@@ -18,7 +19,7 @@ impl IrStore {
         }
     }
 
-    pub fn make_basic_block(&mut self) -> BasicBlock {
+    pub fn make_new_basic_block(&mut self) -> BasicBlock {
         let block = BasicBlockData::new();
         self.blocks.push(block);
 

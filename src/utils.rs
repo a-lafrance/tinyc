@@ -80,11 +80,6 @@ pub enum Builtin {
 }
 
 impl Builtin {
-    pub fn is_builtin(func: &str) -> bool {
-        // could've used the display impl, but that requires allocation
-        func == "InputNum" || func == "OutputNum" || func == "OutputNewLine"
-    }
-
     pub fn from(s: &str) -> Option<Builtin> {
         match s {
             "InputNum" => Some(Builtin::InputNum),
