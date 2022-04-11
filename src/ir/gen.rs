@@ -68,7 +68,7 @@ impl IrGenerator {
 
     /// Detects differences between the values in bb1 and bb2, and generates the
     /// corresponding phi instructions in dest
-    fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) {
+    fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) -> Vec<(Value, Value, Value)>{
         let bb1_data = self.store.basic_block_data(bb1);
         let bb2_data = self.store.basic_block_data(bb2);
         let mismatches = bb1_data.values().filter_map(|(var, val)| {
@@ -82,6 +82,8 @@ impl IrGenerator {
             }
         }).collect::<Vec<_>>();
 
+        let mut phis = vec![];
+
         for (var, val1, val2) in mismatches.into_iter() {
             // gen phi instr
             let phi_val = self.alloc_val();
@@ -92,7 +94,10 @@ impl IrGenerator {
 
             // update join block val table
             self.store.basic_block_data_mut(dest).assign(var, phi_val);
+            phis.push((val1, val2, phi_val));
         }
+
+        phis
     }
 }
 
@@ -251,11 +256,16 @@ impl AstVisitor for IrGenerator {
 
         self.current_block = Some(start_bb);
         // generate phi's between body block and loop start
-        self.generate_phis(start_bb, body_bb, start_bb);
+        let phis = self.generate_phis(start_bb, body_bb, start_bb);
+        // propagate phis into body block
+        for (old_val, _, phi_val) in phis.into_iter() {
+            self.store.replace_val_in_block(body_bb, old_val, phi_val);
+        }
+
         // check condition (delay so that it's after the phi's)
         // connect condition to post block
         self.visit_relation(&loop_stmt.condition);
-        self.connect_via_branch(start_bb, post_bb, BranchOpcode::from(loop_stmt.condition.op.negated()));
+        self.store.connect_via_branch(start_bb, post_bb, BranchOpcode::from(loop_stmt.condition.op.negated()));
 
         // set current to post block
         self.current_block = Some(post_bb);

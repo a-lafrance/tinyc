@@ -1,7 +1,7 @@
 mod gen;
 
 use std::{
-    collections::{hash_map::Iter, HashMap},
+    collections::{hash_map::Iter as HashMapIter, HashMap},
     fmt::{self, Display, Formatter},
 };
 use crate::{
@@ -72,6 +72,15 @@ impl IrStore {
         self.basic_block_data_mut(src).set_branch_dest(dest);
         self.push_instr(src, InstructionData::Branch(branch_type, dest));
     }
+
+    pub fn replace_val_in_block(&mut self, bb: BasicBlock, old_val: Value, new_val: Value) {
+        let bb_data = self.basic_block_data(bb);
+        let bb_body = bb_data.body().iter().copied().collect::<Vec<_>>();
+
+        for i in bb_body.into_iter() {
+            self.instrs[i.0].replace_val(old_val, new_val);
+        }
+    }
 }
 
 impl From<Computation> for IrStore {
@@ -94,6 +103,29 @@ pub enum InstructionData {
     Writeln,
     End,
     Nop,
+}
+
+impl InstructionData {
+    fn replace_val(&mut self, current_val: Value, new_val: Value) {
+        match self {
+            InstructionData::Const(_, ref mut val) if *val == current_val => *val = new_val,
+            InstructionData::Cmp(ref mut lhs, ref mut rhs) => if *lhs == current_val {
+                *lhs = new_val;
+            } else if *rhs == current_val {
+                *rhs = new_val;
+            },
+            InstructionData::StoredBinaryOp { ref mut src1, ref mut src2, ref mut dest, .. } => if *src1 == current_val {
+                *src1 = new_val;
+            } else if *src2 == current_val {
+                *src2 = new_val;
+            } else if *dest == current_val {
+                *dest = new_val;
+            },
+            InstructionData::Read(ref mut val) if *val == current_val => *val = new_val,
+            InstructionData::Write(ref mut val) if *val == current_val => *val = new_val,
+            _ => {},
+        }
+    }
 }
 
 impl Display for InstructionData {
@@ -222,6 +254,10 @@ impl BasicBlockData {
         self.val_table.insert(var, val);
     }
 
+    pub fn body(&self) -> &[Instruction] {
+        &self.body
+    }
+
     pub fn values(&self) -> ValueIter<'_> {
         ValueIter(self.val_table.iter())
     }
@@ -248,10 +284,10 @@ impl Display for Value {
     }
 }
 
-pub struct ValueIter<'a>(Iter<'a, String, Value>);
+pub struct ValueIter<'a>(HashMapIter<'a, String, Value>);
 
 impl<'a> Iterator for ValueIter<'a> {
-    type Item = <Iter<'a, String, Value> as Iterator>::Item;
+    type Item = <HashMapIter<'a, String, Value> as Iterator>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
