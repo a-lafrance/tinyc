@@ -22,6 +22,8 @@ struct Config {
 
     #[clap(short, long, default_value = "out", help = "The output file path")]
     output: String,
+    // Add a --dump-ir flag that specifies to dump the IR, which can be in either
+    // text (ie weird assembly-ish text) or graph (ie dot graph) format
 }
 
 pub fn start<Args, T>(args: Args)

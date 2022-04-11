@@ -6,7 +6,10 @@ use crate::{
     },
     utils::Builtin,
 };
-use super::{BasicBlock, BranchOpcode, InstructionData, IrStore, StoredBinaryOpcode, Value};
+use super::{
+    isa::{BasicBlock, BranchOpcode, InstrData, StoredBinaryOpcode, Value},
+    IrStore,
+};
 
 pub struct IrGenerator {
     store: IrStore,
@@ -89,7 +92,7 @@ impl IrGenerator {
             let phi_val = self.alloc_val();
             self.store.push_instr(
                 dest,
-                InstructionData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
+                InstrData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
             );
 
             // update join block val table
@@ -115,7 +118,7 @@ impl AstVisitor for IrGenerator {
         let bb = self.current_block.expect("invariant violated: basic block not created for block");
 
         if block.is_empty() {
-            self.store.push_instr(bb, InstructionData::Nop);
+            self.store.push_instr(bb, InstrData::Nop);
         } else {
             visit::walk_block(self, block);
         }
@@ -128,7 +131,7 @@ impl AstVisitor for IrGenerator {
         self.store.set_root_block(main_block);
         self.store.push_instr(
             self.current_block.expect("invariant violated: expected block"),
-            InstructionData::End
+            InstrData::End
         );
     }
 
@@ -140,7 +143,7 @@ impl AstVisitor for IrGenerator {
             self.visit_term(term);
             let rhs = self.last_val.expect("invariant violated: expected expr");
             let result = self.alloc_val();
-            let instr = InstructionData::StoredBinaryOp {
+            let instr = InstrData::StoredBinaryOp {
                 opcode: StoredBinaryOpcode::from(*op),
                 src1: lhs,
                 src2: rhs,
@@ -169,13 +172,13 @@ impl AstVisitor for IrGenerator {
                 let val = self.alloc_val();
                 self.last_val = Some(val);
 
-                InstructionData::Read(val)
+                InstrData::Read(val)
             },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
-                InstructionData::Write(self.last_val.expect("invariant violated: expected expr"))
+                InstrData::Write(self.last_val.expect("invariant violated: expected expr"))
             },
-            Some(Builtin::OutputNewLine) => InstructionData::Writeln,
+            Some(Builtin::OutputNewLine) => InstrData::Writeln,
             None => unimplemented!(),
         };
 
@@ -240,34 +243,28 @@ impl AstVisitor for IrGenerator {
 
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
-        // check condition
         let start_bb = self.store.make_new_basic_block_from(prev_bb);
         self.store.connect_via_fallthrough(prev_bb, start_bb);
 
-        // fill new block for body
         let body_bb = self.fill_basic_block_from(start_bb);
         self.store.connect_via_fallthrough(start_bb, body_bb);
         self.visit_block(&loop_stmt.body);
 
-        // connect body block to loop start
         self.store.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
-        // alloc post block
         let post_bb = self.store.make_new_basic_block_from(start_bb);
 
         self.current_block = Some(start_bb);
-        // generate phi's between body block and loop start
         let phis = self.generate_phis(start_bb, body_bb, start_bb);
-        // propagate phis into body block
+
         for (old_val, _, phi_val) in phis.into_iter() {
+            // Problem: this doesn't yet work for nested control flow
+            // this needs to be changed to walk all blocks past body or something?
+            // bruh wtf ok this needs to be changed
             self.store.replace_val_in_block(body_bb, old_val, phi_val);
         }
 
-        // check condition (delay so that it's after the phi's)
-        // connect condition to post block
         self.visit_relation(&loop_stmt.condition);
         self.store.connect_via_branch(start_bb, post_bb, BranchOpcode::from(loop_stmt.condition.op.negated()));
-
-        // set current to post block
         self.current_block = Some(post_bb);
     }
 
@@ -280,7 +277,7 @@ impl AstVisitor for IrGenerator {
 
         self.store.push_instr(
             self.current_block.expect("invariant violated: func call must be in block"),
-            InstructionData::Cmp(lhs, rhs)
+            InstrData::Cmp(lhs, rhs)
         );
     }
 
@@ -296,7 +293,7 @@ impl AstVisitor for IrGenerator {
             self.visit_factor(factor);
             let rhs = self.last_val.expect("invariant violated: expected expr");
             let result = self.alloc_val();
-            let instr = InstructionData::StoredBinaryOp {
+            let instr = InstrData::StoredBinaryOp {
                 opcode: StoredBinaryOpcode::from(*op),
                 src1: lhs,
                 src2: rhs,
@@ -334,7 +331,7 @@ impl ConstAllocator {
         let prelude_block = store.make_new_basic_block();
 
         for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
-            store.push_instr(prelude_block, InstructionData::Const(n, val));
+            store.push_instr(prelude_block, InstrData::Const(n, val));
         }
 
         if let Some(root) = store.root_block() {
