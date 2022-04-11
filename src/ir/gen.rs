@@ -136,7 +136,12 @@ impl AstVisitor for IrGenerator {
 
     fn visit_func_call(&mut self, call: &FuncCall) {
         let instr = match Builtin::from(&call.name) {
-            Some(Builtin::InputNum) => InstructionData::Read(self.alloc_val()),
+            Some(Builtin::InputNum) => {
+                let val = self.alloc_val();
+                self.last_val = Some(val);
+
+                InstructionData::Read(val)
+            },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
                 InstructionData::Write(self.last_val.expect("invariant violated: expected expr"))
