@@ -239,7 +239,7 @@ mod tests {
             walk_term(self, term);
         }
 
-        fn visit_var_decl(&mut self, decl: &VarDecl) {
+        fn visit_var_decl(&mut self, _: &VarDecl) {
             self.0.push('v');
         }
     }
