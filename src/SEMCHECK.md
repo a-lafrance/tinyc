@@ -7,3 +7,6 @@ Just some basic semantic checks that are worth performing
     * Builtin functions come pre-populated
 * Function w/ same name can't be defined twice
 * Function is called w/ required number of arguments
+* Warn when using uninitialized variable
+    * In terms of implementation, this refers to using a variable that doesn't have a value already
+    * Don't forget to assign an initial value of 0, but this only matters when generating native code
