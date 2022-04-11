@@ -1,6 +1,9 @@
 mod gen;
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 use crate::{
     ast::{Computation, FactorOp, TermOp},
     utils::RelOp,
@@ -31,14 +34,25 @@ impl IrStore {
         self.root = Some(bb);
     }
 
+    pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
+        &self.blocks[bb.0]
+    }
+
     pub fn basic_block_data_mut(&mut self, bb: BasicBlock) -> &mut BasicBlockData {
         &mut self.blocks[bb.0]
     }
 
     pub fn make_new_basic_block(&mut self) -> BasicBlock {
-        let block = BasicBlockData::new();
-        self.blocks.push(block);
+        self.push_basic_block(BasicBlockData::new())
+    }
 
+    pub fn make_new_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
+        let bb = BasicBlockData::new_from(self.basic_block_data(parent));
+        self.push_basic_block(bb)
+    }
+
+    fn push_basic_block(&mut self, bb: BasicBlockData) -> BasicBlock {
+        self.blocks.push(bb);
         BasicBlock(self.blocks.len() - 1)
     }
 
@@ -177,17 +191,35 @@ impl Display for BasicBlock {
 #[derive(Debug)]
 pub struct BasicBlockData {
     body: Vec<Instruction>,
+    val_table: HashMap<String, Value>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
     pub fn new() -> BasicBlockData {
+        BasicBlockData::with_vals(HashMap::new())
+    }
+
+    pub fn new_from(bb: &BasicBlockData) -> BasicBlockData {
+        BasicBlockData::with_vals(bb.val_table.clone())
+    }
+
+    fn with_vals(val_table: HashMap<String, Value>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
+            val_table,
             fallthrough_dest: None,
             branch_dest: None,
         }
+    }
+
+    pub fn get_val(&self, var: &str) -> Option<Value> {
+        self.val_table.get(var).copied()
+    }
+
+    pub fn assign(&mut self, var: String, val: Value) {
+        self.val_table.insert(var, val);
     }
 
     pub fn push_instr(&mut self, instr: Instruction) {

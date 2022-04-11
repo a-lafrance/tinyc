@@ -10,7 +10,6 @@ use super::{BasicBlock, BranchOpcode, InstructionData, IrStore, StoredBinaryOpco
 
 pub struct IrGenerator {
     store: IrStore,
-    val_table: HashMap<String, Value>, // generalize to one per bb
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
     next_val: Value,
@@ -28,7 +27,6 @@ impl IrGenerator {
     fn new() -> IrGenerator {
         IrGenerator {
             store: IrStore::new(),
-            val_table: HashMap::new(),
             const_alloc: ConstAllocator::new(),
             last_val: None,
             next_val: Value(0),
@@ -44,7 +42,7 @@ impl IrGenerator {
     }
 
     fn load_var(&mut self, var: &str) {
-        self.last_val = self.val_table.get(var).copied();
+        self.last_val = self.current_block.map(|bb| self.store.basic_block_data(bb)).and_then(|bb| bb.get_val(var));
     }
 
     fn load_const(&mut self, n: u32) {
@@ -59,7 +57,12 @@ impl IrGenerator {
     fn fill_basic_block(&mut self) -> BasicBlock {
         let bb = self.store.make_new_basic_block();
         self.current_block = Some(bb);
+        bb
+    }
 
+    fn fill_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
+        let bb = self.store.make_new_basic_block_from(parent);
+        self.current_block = Some(bb);
         bb
     }
 }
@@ -67,10 +70,11 @@ impl IrGenerator {
 impl AstVisitor for IrGenerator {
     fn visit_assignment(&mut self, assign: &Assignment) {
         self.visit_expr(&assign.value);
-        self.val_table.insert(
-            assign.place.clone(),
-            self.last_val.expect("invariant violated: assignment to non-expression"),
-        );
+        self.store.basic_block_data_mut(self.current_block.expect("invariant violated: can only assign in block"))
+            .assign(
+                assign.place.clone(),
+                self.last_val.expect("invariant violated: assignment to non-expression"),
+            );
     }
 
     fn visit_block(&mut self, block: &Block) {
@@ -158,20 +162,20 @@ impl AstVisitor for IrGenerator {
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
         // fill new basic block for then
-        let then_bb = self.fill_basic_block();
+        let then_bb = self.fill_basic_block_from(condition_bb);
         self.visit_block(&if_stmt.then_block);
 
         // connect start basic block to then basic block via fallthrough
         self.store.connect_via_fallthrough(condition_bb, then_bb);
 
         // pre-allocate join basic block
-        let join_bb = self.store.make_new_basic_block();
+        let join_bb = self.store.make_new_basic_block_from(condition_bb);
 
         // connect inner blocks together depending on presence of else
         let dest_bb = match if_stmt.else_block {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
-                let else_bb = self.fill_basic_block();
+                let else_bb = self.fill_basic_block_from(condition_bb);
                 self.visit_block(else_block);
 
                 // connect then block to join block via branch
