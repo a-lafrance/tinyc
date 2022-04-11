@@ -1,7 +1,7 @@
 mod gen;
 
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Iter, HashMap},
     fmt::{self, Display, Formatter},
 };
 use crate::{
@@ -222,6 +222,10 @@ impl BasicBlockData {
         self.val_table.insert(var, val);
     }
 
+    pub fn values(&self) -> ValueIter<'_> {
+        ValueIter(self.val_table.iter())
+    }
+
     pub fn push_instr(&mut self, instr: Instruction) {
         self.body.push(instr);
     }
@@ -241,5 +245,15 @@ pub struct Value(usize);
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "${}", self.0)
+    }
+}
+
+pub struct ValueIter<'a>(Iter<'a, String, Value>);
+
+impl<'a> Iterator for ValueIter<'a> {
+    type Item = <Iter<'a, String, Value> as Iterator>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
     }
 }

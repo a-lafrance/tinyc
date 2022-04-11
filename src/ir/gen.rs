@@ -164,31 +164,34 @@ impl AstVisitor for IrGenerator {
         // fill new basic block for then
         let then_bb = self.fill_basic_block_from(condition_bb);
         self.visit_block(&if_stmt.then_block);
+        let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
         // connect start basic block to then basic block via fallthrough
         self.store.connect_via_fallthrough(condition_bb, then_bb);
 
         // pre-allocate join basic block
-        let join_bb = self.store.make_new_basic_block_from(condition_bb);
+        // use the then block as the basis for the join block's values to make phi discovery easier
+        let join_bb = self.store.make_new_basic_block_from(then_end_bb);
 
         // connect inner blocks together depending on presence of else
-        let dest_bb = match if_stmt.else_block {
+        let (dest_bb, phi_compare_bb) = match if_stmt.else_block {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
                 let else_bb = self.fill_basic_block_from(condition_bb);
                 self.visit_block(else_block);
+                let else_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
                 // connect then block to join block via branch
                 // connect else block to join block via fallthrough
-                self.store.connect_via_branch(then_bb, join_bb, BranchOpcode::Br);
-                self.store.connect_via_fallthrough(else_bb, join_bb);
-                else_bb
+                self.store.connect_via_branch(then_end_bb, join_bb, BranchOpcode::Br);
+                self.store.connect_via_fallthrough(else_end_bb, join_bb);
+                (else_bb, else_end_bb)
             },
 
             None => {
                 // connect then block to join block via fallthrough
-                self.store.connect_via_fallthrough(then_bb, join_bb);
-                join_bb
+                self.store.connect_via_fallthrough(then_end_bb, join_bb);
+                (join_bb, condition_bb)
             },
         };
 
@@ -199,10 +202,32 @@ impl AstVisitor for IrGenerator {
         // fast-forward to join block
         self.current_block = Some(join_bb);
 
-        // generate phi instructions in end block
-            // compare value tables from then/else and resolve differences
-                // if there's no else, else block is effectively the start block, ie did any values change during the then block
-            // IMPORTANT: this requires using the _end_ basic block for then/else, not the start
+        // for each (var, val) pair in join block's val table:
+            // if different in end block, generate a phi instruction in join block and update join block val table
+        let join_bb_data = self.store.basic_block_data(join_bb);
+        let phi_compare_bb_data = self.store.basic_block_data(phi_compare_bb);
+        let mut mismatches = vec![];
+
+        for (var, val) in join_bb_data.values() {
+            let val = *val;
+            let other_val = phi_compare_bb_data.get_val(&var).expect("invariant violated: var not found");
+
+            if val != other_val {
+                mismatches.push((var.to_string(), val, other_val));
+            }
+        }
+
+        for (var, val1, val2) in mismatches.into_iter() {
+            // gen phi instr
+            let phi_val = self.alloc_val();
+            self.store.push_instr(
+                join_bb,
+                InstructionData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
+            );
+
+            // update join block val table
+            self.store.basic_block_data_mut(join_bb).assign(var, phi_val);
+        }
     }
 
     // fn visit_loop(&mut self, loop_stmt: &Loop) {

@@ -1,5 +1,5 @@
 main
-var a, b, c, d, e;
+var a, b, c, d, e, f;
 
 {
     let a <- 1;
@@ -10,10 +10,16 @@ var a, b, c, d, e;
 
     if e > d
     then
-        call OutputNum(a);
+        if b > a
+        then
+            let f <- 34;
+        else
+            let f <- 35;
+        fi
     else
-        call OutputNum(b);
+        let f <- 420;
     fi;
 
+    call OutputNum(f);
     call OutputNewLine();
 }.
