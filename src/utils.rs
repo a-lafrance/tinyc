@@ -15,6 +15,17 @@ impl RelOp {
             RelOp::Eq, RelOp::Ne, RelOp::Gt, RelOp::Ge, RelOp::Lt, RelOp::Le,
         )
     }
+
+    pub fn negated(&self) -> RelOp {
+        match self {
+            RelOp::Eq => RelOp::Ne,
+            RelOp::Ne => RelOp::Eq,
+            RelOp::Gt => RelOp::Le,
+            RelOp::Ge => RelOp::Lt,
+            RelOp::Lt => RelOp::Ge,
+            RelOp::Le => RelOp::Gt,
+        }
+    }
 }
 
 impl Display for RelOp {
@@ -70,5 +81,28 @@ impl FromStr for Keyword {
             "var" => Ok(Keyword::Var),
             _ => Err(())
         }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Builtin {
+    InputNum, OutputNum, OutputNewLine,
+}
+
+impl Builtin {
+    pub fn from(s: &str) -> Option<Builtin> {
+        match s {
+            "InputNum" => Some(Builtin::InputNum),
+            "OutputNum" => Some(Builtin::OutputNum),
+            "OutputNewLine" => Some(Builtin::OutputNewLine),
+            _ => None,
+        }
+    }
+}
+
+impl Display for Builtin {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

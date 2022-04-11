@@ -1,0 +1,16 @@
+main
+var counter;
+
+{
+    let counter <- call InputNum();
+
+    while counter > 0
+    do
+        call OutputNum(counter);
+        call OutputNewLine();
+        let counter <- counter - 1;
+    od;
+
+    call OutputNum(101);
+    call OutputNewLine();
+}.

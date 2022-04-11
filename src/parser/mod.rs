@@ -63,6 +63,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     }
 
     pub fn parse_block(&mut self, scope: &str) -> ParseResult<Block> {
+        // regression: if you forget to terminate a statement with semicolon, it gives expected '}' which isn't great
         let mut body = vec![self.parse_stmt(scope)?];
 
         while self.stream.try_consume_matching_punctuation(';').is_ok() {
