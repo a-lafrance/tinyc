@@ -1,25 +1,16 @@
 main
-var a, b, c, d, e, f;
+var counter;
 
 {
-    let a <- 1;
-    let b <- 2;
-    let c <- a;
-    let d <- call InputNum();
-    let e <- a + b + c + d;
+    let counter <- call InputNum();
 
-    if e > d
-    then
-        if b > a
-        then
-            let f <- 34;
-        else
-            let f <- 35;
-        fi
-    else
-        let f <- 420;
-    fi;
+    while counter > 0
+    do
+        call OutputNum(counter);
+        call OutputNewLine();
+        let counter <- counter - 1;
+    od;
 
-    call OutputNum(f);
+    call OutputNum(101);
     call OutputNewLine();
 }.

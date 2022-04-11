@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Relation, Term, VarDecl,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Term, VarDecl,
         visit::{self, AstVisitor},
     },
     utils::Builtin,
@@ -64,6 +64,35 @@ impl IrGenerator {
         let bb = self.store.make_new_basic_block_from(parent);
         self.current_block = Some(bb);
         bb
+    }
+
+    /// Detects differences between the values in bb1 and bb2, and generates the
+    /// corresponding phi instructions in dest
+    fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) {
+        let bb1_data = self.store.basic_block_data(bb1);
+        let bb2_data = self.store.basic_block_data(bb2);
+        let mismatches = bb1_data.values().filter_map(|(var, val)| {
+            let val = *val;
+            let other_val = bb2_data.get_val(var).expect("invariant violated: var not found");
+
+            if val != other_val {
+                Some((var.to_string(), val, other_val))
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>();
+
+        for (var, val1, val2) in mismatches.into_iter() {
+            // gen phi instr
+            let phi_val = self.alloc_val();
+            self.store.push_instr(
+                dest,
+                InstructionData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
+            );
+
+            // update join block val table
+            self.store.basic_block_data_mut(dest).assign(var, phi_val);
+        }
     }
 }
 
@@ -179,7 +208,7 @@ impl AstVisitor for IrGenerator {
                 // if else block exists, fill new basic block for it
                 let else_bb = self.fill_basic_block_from(condition_bb);
                 self.visit_block(else_block);
-                let else_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
+                let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
 
                 // connect then block to join block via branch
                 // connect else block to join block via fallthrough
@@ -201,38 +230,36 @@ impl AstVisitor for IrGenerator {
 
         // fast-forward to join block
         self.current_block = Some(join_bb);
-
-        // for each (var, val) pair in join block's val table:
-            // if different in end block, generate a phi instruction in join block and update join block val table
-        let join_bb_data = self.store.basic_block_data(join_bb);
-        let phi_compare_bb_data = self.store.basic_block_data(phi_compare_bb);
-        let mut mismatches = vec![];
-
-        for (var, val) in join_bb_data.values() {
-            let val = *val;
-            let other_val = phi_compare_bb_data.get_val(&var).expect("invariant violated: var not found");
-
-            if val != other_val {
-                mismatches.push((var.to_string(), val, other_val));
-            }
-        }
-
-        for (var, val1, val2) in mismatches.into_iter() {
-            // gen phi instr
-            let phi_val = self.alloc_val();
-            self.store.push_instr(
-                join_bb,
-                InstructionData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
-            );
-
-            // update join block val table
-            self.store.basic_block_data_mut(join_bb).assign(var, phi_val);
-        }
+        self.generate_phis(join_bb, phi_compare_bb, join_bb);
     }
 
-    // fn visit_loop(&mut self, loop_stmt: &Loop) {
-    //     walk_loop(self, loop_stmt);
-    // }
+    fn visit_loop(&mut self, loop_stmt: &Loop) {
+        let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
+        // check condition
+        let start_bb = self.store.make_new_basic_block_from(prev_bb);
+        self.store.connect_via_fallthrough(prev_bb, start_bb);
+
+        // fill new block for body
+        let body_bb = self.fill_basic_block_from(start_bb);
+        self.store.connect_via_fallthrough(start_bb, body_bb);
+        self.visit_block(&loop_stmt.body);
+
+        // connect body block to loop start
+        self.store.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
+        // alloc post block
+        let post_bb = self.store.make_new_basic_block_from(start_bb);
+
+        self.current_block = Some(start_bb);
+        // generate phi's between body block and loop start
+        self.generate_phis(start_bb, body_bb, start_bb);
+        // check condition (delay so that it's after the phi's)
+        // connect condition to post block
+        self.visit_relation(&loop_stmt.condition);
+        self.connect_via_branch(start_bb, post_bb, BranchOpcode::from(loop_stmt.condition.op.negated()));
+
+        // set current to post block
+        self.current_block = Some(post_bb);
+    }
 
     fn visit_relation(&mut self, relation: &Relation) {
         self.visit_expr(&relation.lhs);
