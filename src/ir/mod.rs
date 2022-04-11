@@ -75,7 +75,7 @@ impl IrStore {
 
     pub fn replace_val_in_block(&mut self, bb: BasicBlock, old_val: Value, new_val: Value) {
         let bb_data = self.basic_block_data(bb);
-        let bb_body = bb_data.body().iter().copied().collect::<Vec<_>>();
+        let bb_body = bb_data.body().to_vec();
 
         for i in bb_body.into_iter() {
             self.instrs[i.0].replace_val(old_val, new_val);
