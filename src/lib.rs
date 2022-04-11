@@ -26,6 +26,9 @@ struct Config {
     output: String,
     // Add a --dump-ir flag that specifies to dump the IR, which can be in either
     // text (ie weird assembly-ish text) or graph (ie dot graph) format
+
+    #[clap(long)]
+    dump_ir: bool,
 }
 
 pub fn start<Args, T>(args: Args)
@@ -46,7 +49,10 @@ where
     match Parser::new(tokens).and_then(|mut p| p.parse_computation()) {
         Ok(ast) => {
             let ir = IrStore::from(ast);
-            println!("generated ir: {:?}", ir);
+
+            if config.dump_ir {
+                println!("{:?}", ir);
+            }
         },
 
         Err(e) => eprintln!("\x1b[31merror\x1b[0m: {}", e),
