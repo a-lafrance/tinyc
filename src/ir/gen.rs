@@ -6,7 +6,7 @@ use crate::{
     },
     utils::Builtin,
 };
-use super::{BasicBlock, InstructionData, IrStore, StoredBinaryOpcode, Value};
+use super::{BasicBlock, BranchOpcode, InstructionData, IrStore, StoredBinaryOpcode, Value};
 
 pub struct IrGenerator {
     store: IrStore,
@@ -64,6 +64,13 @@ impl IrGenerator {
             val
         }));
     }
+
+    fn fill_basic_block(&mut self) -> BasicBlock {
+        let bb = self.store.make_new_basic_block();
+        self.current_block = Some(bb);
+
+        bb
+    }
 }
 
 impl AstVisitor for IrGenerator {
@@ -76,24 +83,22 @@ impl AstVisitor for IrGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) {
-        let new_block = self.store.make_new_basic_block();
-        self.current_block = Some(new_block);
+        let bb = self.current_block.expect("invariant violated: basic block not created for block");
 
         if block.is_empty() {
-            self.store.push_instr(new_block, InstructionData::Nop);
+            self.store.push_instr(bb, InstructionData::Nop);
         } else {
             visit::walk_block(self, block);
         }
     }
 
     fn visit_computation(&mut self, comp: &Computation) {
-        visit::walk_computation(self, comp);
+        let main_block = self.fill_basic_block();
+        self.visit_block(&comp.body);
 
-        let main_block = self.current_block.expect("invariant violated: missing main block");
-
-        self.store.root_block_mut().insert(main_block);
+        self.store.set_root_block(main_block);
         self.store.push_instr(
-            main_block,
+            self.current_block.expect("invariant violated: expected block"),
             InstructionData::End
         );
     }
@@ -152,11 +157,74 @@ impl AstVisitor for IrGenerator {
     }
 
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
-        // check condition in current block
-        // generate branch instr in current block
-        // save current block for use later
-        // visit then block
+        // if no else:
+            // condition:
+                // cmp $0, $1
+                // bnot join
+            // then:
+                // ...
+            // join:
+                // ...
 
+        // if else:
+            // condition:
+                // cmp $0, $1
+                // bnot else
+            // then:
+                // ...
+                // br join
+            // else:
+                // ...
+            // join
+                // ...
+
+        // check condition in start basic block
+        self.visit_relation(&if_stmt.condition);
+        let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
+
+        // fill new basic block for then
+        let then_bb = self.fill_basic_block();
+        self.visit_block(&if_stmt.then_block);
+
+        // connect start basic block to then basic block via fallthrough
+        self.store.connect_via_fallthrough(condition_bb, then_bb);
+
+        // pre-allocate join basic block
+        let join_bb = self.store.make_new_basic_block();
+
+        // connect inner blocks together depending on presence of else
+        let dest_bb = match if_stmt.else_block {
+            Some(ref else_block) => {
+                // if else block exists, fill new basic block for it
+                let else_bb = self.fill_basic_block();
+                let else_bb_data = self.store.basic_block_data_mut(else_bb);
+                self.visit_block(else_block);
+
+                // connect then block to join block via branch
+                // connect else block to join block via fallthrough
+                self.store.connect_via_branch(then_bb, join_bb, BranchOpcode::Br);
+                self.store.connect_via_fallthrough(else_bb, join_bb);
+                else_bb
+            },
+
+            None => {
+                // connect then block to join block via fallthrough
+                self.store.connect_via_fallthrough(then_bb, join_bb);
+                join_bb
+            },
+        };
+
+        // connect start block to destination block (either join or else) via conditional branch
+        let branch_opcode = BranchOpcode::from(if_stmt.condition.op.negated());
+        self.store.connect_via_branch(condition_bb, dest_bb, branch_opcode);
+
+        // fast-forward to join block
+        self.current_block = Some(join_bb);
+
+        // generate phi instructions in end block
+            // compare value tables from then/else and resolve differences
+                // if there's no else, else block is effectively the start block, ie did any values change during the then block
+            // IMPORTANT: this requires using the _end_ basic block for then/else, not the start
     }
 
     // fn visit_loop(&mut self, loop_stmt: &Loop) {
@@ -229,10 +297,9 @@ impl ConstAllocator {
             store.push_instr(prelude_block, InstructionData::Const(n, val));
         }
 
-        let root = *store.root_block();
+        let root = store.root_block();
         let prelude_block_data = store.basic_block_data_mut(prelude_block);
         *prelude_block_data.fallthrough_dest_mut() = root;
-
-        *store.root_block_mut() = Some(prelude_block);
+        store.set_root_block(prelude_block);
     }
 }

@@ -1,7 +1,10 @@
 mod gen;
 
 use std::fmt::{self, Display, Formatter};
-use crate::ast::{Computation, FactorOp, TermOp};
+use crate::{
+    ast::{Computation, FactorOp, TermOp},
+    utils::RelOp,
+};
 use self::gen::IrGenerator;
 
 #[derive(Debug)]
@@ -20,12 +23,16 @@ impl IrStore {
         }
     }
 
-    pub fn root_block(&self) -> &Option<BasicBlock> {
-        &self.root
+    pub fn root_block(&self) -> Option<BasicBlock> {
+        self.root
     }
 
     pub fn root_block_mut(&mut self) -> &mut Option<BasicBlock> {
         &mut self.root
+    }
+
+    pub fn set_root_block(&mut self, bb: BasicBlock) {
+        self.root = Some(bb);
     }
 
     pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
@@ -49,6 +56,15 @@ impl IrStore {
         self.blocks[block.0].push_instr(instr);
 
         instr
+    }
+
+    pub fn connect_via_fallthrough(&mut self, src: BasicBlock, dest: BasicBlock) {
+        self.basic_block_data_mut(src).set_fallthrough_dest(dest);
+    }
+
+    pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
+        self.basic_block_data_mut(src).set_branch_dest(dest);
+        self.push_instr(src, InstructionData::Branch(branch_type, dest));
     }
 }
 
@@ -105,6 +121,19 @@ impl Display for BranchOpcode {
             BranchOpcode::Bge => write!(f, "bge"),
             BranchOpcode::Blt => write!(f, "blt"),
             BranchOpcode::Ble => write!(f, "ble"),
+        }
+    }
+}
+
+impl From<RelOp> for BranchOpcode {
+    fn from(op: RelOp) -> BranchOpcode {
+        match op {
+            RelOp::Eq => BranchOpcode::Beq,
+            RelOp::Ne => BranchOpcode::Bne,
+            RelOp::Gt => BranchOpcode::Bgt,
+            RelOp::Ge => BranchOpcode::Bge,
+            RelOp::Lt => BranchOpcode::Blt,
+            RelOp::Le => BranchOpcode::Ble,
         }
     }
 }
@@ -173,6 +202,14 @@ impl BasicBlockData {
 
     pub fn fallthrough_dest_mut(&mut self) -> &mut Option<BasicBlock> {
         &mut self.fallthrough_dest
+    }
+
+    pub fn set_fallthrough_dest(&mut self, dest: BasicBlock) {
+        self.fallthrough_dest = Some(dest);
+    }
+
+    pub fn set_branch_dest(&mut self, dest: BasicBlock) {
+        self.branch_dest = Some(dest);
     }
 }
 

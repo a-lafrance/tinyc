@@ -15,6 +15,17 @@ impl RelOp {
             RelOp::Eq, RelOp::Ne, RelOp::Gt, RelOp::Ge, RelOp::Lt, RelOp::Le,
         )
     }
+
+    pub fn negated(&self) -> RelOp {
+        match self {
+            RelOp::Eq => RelOp::Ne,
+            RelOp::Ne => RelOp::Eq,
+            RelOp::Gt => RelOp::Le,
+            RelOp::Ge => RelOp::Lt,
+            RelOp::Lt => RelOp::Ge,
+            RelOp::Le => RelOp::Gt,
+        }
+    }
 }
 
 impl Display for RelOp {

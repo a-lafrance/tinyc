@@ -7,6 +7,13 @@ var a, b, c, d, e;
     let c <- a;
     let d <- call InputNum();
     let e <- a + b + c + d;
-    call OutputNum(e);
+
+    if e > d
+    then
+        call OutputNum(a);
+    else
+        call OutputNum(b);
+    fi;
+
     call OutputNewLine();
 }.
