@@ -22,7 +22,6 @@ impl IrGenerator {
         let mut gen = IrGenerator::new();
         gen.visit_computation(ast);
         gen.const_alloc.make_prelude_block(&mut gen.store);
-
         gen.store
     }
 
@@ -35,14 +34,6 @@ impl IrGenerator {
             next_val: Value(0),
             current_block: None,
         }
-    }
-
-    pub fn store(&self) -> &IrStore {
-        &self.store
-    }
-
-    pub fn store_mut(&mut self) -> &mut IrStore {
-        &mut self.store
     }
 
     pub(self) fn alloc_val(&mut self) -> Value {
@@ -162,27 +153,6 @@ impl AstVisitor for IrGenerator {
     }
 
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
-        // if no else:
-            // condition:
-                // cmp $0, $1
-                // bnot join
-            // then:
-                // ...
-            // join:
-                // ...
-
-        // if else:
-            // condition:
-                // cmp $0, $1
-                // bnot else
-            // then:
-                // ...
-                // br join
-            // else:
-                // ...
-            // join
-                // ...
-
         // check condition in start basic block
         self.visit_relation(&if_stmt.condition);
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
@@ -202,7 +172,6 @@ impl AstVisitor for IrGenerator {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
                 let else_bb = self.fill_basic_block();
-                let else_bb_data = self.store.basic_block_data_mut(else_bb);
                 self.visit_block(else_block);
 
                 // connect then block to join block via branch
@@ -302,9 +271,10 @@ impl ConstAllocator {
             store.push_instr(prelude_block, InstructionData::Const(n, val));
         }
 
-        let root = store.root_block();
-        let prelude_block_data = store.basic_block_data_mut(prelude_block);
-        *prelude_block_data.fallthrough_dest_mut() = root;
+        if let Some(root) = store.root_block() {
+            store.connect_via_fallthrough(prelude_block, root);
+        }
+
         store.set_root_block(prelude_block);
     }
 }

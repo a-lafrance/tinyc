@@ -27,16 +27,8 @@ impl IrStore {
         self.root
     }
 
-    pub fn root_block_mut(&mut self) -> &mut Option<BasicBlock> {
-        &mut self.root
-    }
-
     pub fn set_root_block(&mut self, bb: BasicBlock) {
         self.root = Some(bb);
-    }
-
-    pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
-        &self.blocks[bb.0]
     }
 
     pub fn basic_block_data_mut(&mut self, bb: BasicBlock) -> &mut BasicBlockData {
@@ -95,7 +87,7 @@ impl Display for InstructionData {
         match self {
             InstructionData::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             InstructionData::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
-            InstructionData::Branch(opcode, dest) => write!(f, "{} TODO", opcode),
+            InstructionData::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
             InstructionData::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
             InstructionData::Read(dest) => write!(f, "{} = read", dest),
             InstructionData::Write(src) => write!(f, "write {}", src),
@@ -176,6 +168,12 @@ impl From<TermOp> for StoredBinaryOpcode {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct BasicBlock(usize);
 
+impl Display for BasicBlock {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "BB{}", self.0)
+    }
+}
+
 #[derive(Debug)]
 pub struct BasicBlockData {
     body: Vec<Instruction>,
@@ -194,14 +192,6 @@ impl BasicBlockData {
 
     pub fn push_instr(&mut self, instr: Instruction) {
         self.body.push(instr);
-    }
-
-    pub fn fallthrough_dest(&self) -> &Option<BasicBlock> {
-        &self.fallthrough_dest
-    }
-
-    pub fn fallthrough_dest_mut(&mut self) -> &mut Option<BasicBlock> {
-        &mut self.fallthrough_dest
     }
 
     pub fn set_fallthrough_dest(&mut self, dest: BasicBlock) {
