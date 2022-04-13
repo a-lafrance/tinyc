@@ -77,15 +77,6 @@ impl IrStore {
         self.basic_block_data_mut(src).set_branch_dest(dest);
         self.push_instr(src, InstrData::Branch(branch_type, dest));
     }
-
-    pub fn replace_val_in_block(&mut self, bb: BasicBlock, old_val: Value, new_val: Value) {
-        let bb_data = self.basic_block_data(bb);
-        let bb_body = bb_data.body().to_vec();
-
-        for i in bb_body.into_iter() {
-            self.instrs[i.0].replace_val(old_val, new_val);
-        }
-    }
 }
 
 impl From<Computation> for IrStore {

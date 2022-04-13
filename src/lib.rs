@@ -1,3 +1,5 @@
+#![allow(clippy::needless_collect)] // because of the false positives
+
 pub(crate) mod ast;
 pub(crate) mod ir;
 pub(crate) mod parser;
