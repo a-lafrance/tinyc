@@ -1,13 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Term, VarDecl,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Term,
         visit::{self, AstVisitor},
     },
     utils::Builtin,
 };
 use super::{
-    isa::{BasicBlock, BranchOpcode, InstrData, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, BasicBlockData, BranchOpcode, InstrData, StoredBinaryOpcode, Value},
     IrStore,
 };
 
@@ -246,6 +246,22 @@ impl AstVisitor for IrGenerator {
         let start_bb = self.store.make_new_basic_block_from(prev_bb);
         self.store.connect_via_fallthrough(prev_bb, start_bb);
 
+        let phis = PhiDetectionPass::run(self.store.basic_block_data(start_bb), &loop_stmt.body)
+            .into_iter()
+            .map(|var| {
+                let old_val = self.store.val_in_bb(start_bb, &var).expect("invariant violated: phi detection returned non-existent var");
+                let dest_val = self.alloc_val();
+                self.store.assign_in_bb(start_bb, var.clone(), dest_val);
+
+                (var, InstrData::StoredBinaryOp {
+                    opcode: StoredBinaryOpcode::Phi,
+                    src1: old_val,
+                    src2: Value(0),
+                    dest: dest_val
+                })
+            })
+            .collect::<Vec<_>>();
+
         let body_bb = self.fill_basic_block_from(start_bb);
         self.store.connect_via_fallthrough(start_bb, body_bb);
         self.visit_block(&loop_stmt.body);
@@ -254,13 +270,16 @@ impl AstVisitor for IrGenerator {
         let post_bb = self.store.make_new_basic_block_from(start_bb);
 
         self.current_block = Some(start_bb);
-        let phis = self.generate_phis(start_bb, body_bb, start_bb);
 
-        for (old_val, _, phi_val) in phis.into_iter() {
-            // Problem: this doesn't yet work for nested control flow
-            // this needs to be changed to walk all blocks past body or something?
-            // bruh wtf ok this needs to be changed
-            self.store.replace_val_in_block(body_bb, old_val, phi_val);
+        for (var, mut phi) in phis.into_iter() {
+            match phi {
+                InstrData::StoredBinaryOp { ref mut src2, .. } => *src2 = self.store
+                    .val_in_bb(body_bb, &var)
+                    .expect("invariant violated: val not found for var in phi instruction"),
+                _ => unreachable!(),
+            }
+
+            self.store.push_instr(start_bb, phi);
         }
 
         self.visit_relation(&loop_stmt.condition);
@@ -307,8 +326,6 @@ impl AstVisitor for IrGenerator {
             );
         }
     }
-
-    fn visit_var_decl(&mut self, _: &VarDecl) { }
 }
 
 
@@ -339,5 +356,36 @@ impl ConstAllocator {
         }
 
         store.set_root_block(prelude_block);
+    }
+}
+
+
+struct PhiDetectionPass<'bb> {
+    bb: &'bb BasicBlockData,
+    phis: HashSet<String>,
+}
+
+impl<'bb> PhiDetectionPass<'bb> {
+    pub fn run(bb: &'bb BasicBlockData, block: &Block) -> HashSet<String> {
+        let mut pass = PhiDetectionPass::new(bb);
+        pass.visit_block(block);
+
+        pass.phis
+    }
+
+    fn new(bb: &'bb BasicBlockData) -> PhiDetectionPass {
+        PhiDetectionPass {
+            bb,
+            phis: HashSet::new(),
+        }
+    }
+}
+
+impl AstVisitor for PhiDetectionPass<'_> {
+    fn visit_assignment(&mut self, assign: &Assignment) {
+        if self.bb.get_val(&assign.place).is_some() {
+            // NOTE: clone usually not good
+            self.phis.insert(assign.place.clone());
+        }
     }
 }

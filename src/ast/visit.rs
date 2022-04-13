@@ -57,7 +57,7 @@ pub trait AstVisitor: Sized {
     }
 
     // i don't think this will ever be useful, beyond maybe printing the ast
-    fn visit_var_decl(&mut self, decl: &VarDecl);
+    fn visit_var_decl(&mut self, _: &VarDecl) { }
 }
 
 pub fn walk_assignment(visitor: &mut impl AstVisitor, assign: &Assignment) {

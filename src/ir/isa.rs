@@ -23,29 +23,6 @@ pub enum InstrData {
     Nop,
 }
 
-impl InstrData {
-    pub(super) fn replace_val(&mut self, current_val: Value, new_val: Value) {
-        match self {
-            InstrData::Const(_, ref mut val) if *val == current_val => *val = new_val,
-            InstrData::Cmp(ref mut lhs, ref mut rhs) => if *lhs == current_val {
-                *lhs = new_val;
-            } else if *rhs == current_val {
-                *rhs = new_val;
-            },
-            InstrData::StoredBinaryOp { ref mut src1, ref mut src2, ref mut dest, .. } => if *src1 == current_val {
-                *src1 = new_val;
-            } else if *src2 == current_val {
-                *src2 = new_val;
-            } else if *dest == current_val {
-                *dest = new_val;
-            },
-            InstrData::Read(ref mut val) if *val == current_val => *val = new_val,
-            InstrData::Write(ref mut val) if *val == current_val => *val = new_val,
-            _ => {},
-        }
-    }
-}
-
 impl Display for InstrData {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -173,10 +150,6 @@ impl BasicBlockData {
 
     pub fn assign(&mut self, var: String, val: Value) {
         self.val_table.insert(var, val);
-    }
-
-    pub fn body(&self) -> &[Instruction] {
-        &self.body
     }
 
     pub fn values(&self) -> ValueIter<'_> {
