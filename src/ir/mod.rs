@@ -39,6 +39,14 @@ impl IrStore {
         &mut self.blocks[bb.0]
     }
 
+    pub fn val_in_bb(&self, bb: BasicBlock, var: &str) -> Option<Value> {
+        self.basic_block_data(bb).get_val(var)
+    }
+
+    pub fn assign_in_bb(&mut self, bb: BasicBlock, var: String, val: Value) {
+        self.basic_block_data_mut(bb).assign(var, val);
+    }
+
     pub fn make_new_basic_block(&mut self) -> BasicBlock {
         self.push_basic_block(BasicBlockData::new())
     }
