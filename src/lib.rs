@@ -9,12 +9,12 @@ pub(crate) mod sym;
 pub(crate) mod tok;
 pub(crate) mod utils;
 
+use std::{ffi::OsString, fs::File, io::{self, Read}};
 use self::{
-    ir::IrStore,
+    ir::{fmt::IrFormatter, IrStore},
     parser::Parser,
 };
 use clap::Parser as ArgParse;
-use std::{ffi::OsString, fs::File, io::Read};
 
 #[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
@@ -24,8 +24,6 @@ struct Config {
 
     #[clap(short, long, default_value = "out", help = "The output file path")]
     output: String,
-    // Add a --dump-ir flag that specifies to dump the IR, which can be in either
-    // text (ie weird assembly-ish text) or graph (ie dot graph) format
 
     #[clap(long)]
     dump_ir: bool,
@@ -51,7 +49,7 @@ where
             let ir = IrStore::from(ast);
 
             if config.dump_ir {
-                println!("{:?}", ir);
+                IrFormatter::fmt(&mut io::stdout(), &ir).expect("failed to dump IR");
             }
         },
 

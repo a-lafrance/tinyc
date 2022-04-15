@@ -106,7 +106,7 @@ impl From<TermOp> for StoredBinaryOpcode {
 
 
 // wrapper around interned index
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BasicBlock(pub usize);
 
 impl Display for BasicBlock {
