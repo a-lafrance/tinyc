@@ -1,3 +1,4 @@
+pub mod fmt;
 mod gen;
 pub mod isa;
 pub mod visit;

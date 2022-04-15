@@ -1,8 +1,8 @@
 use super::isa::{BasicBlock, BasicBlockData, BranchOpcode, Instruction, StoredBinaryOpcode, Value};
 
 pub trait IrVisitor: Sized {
-    fn visit_basic_block(&mut self, bb: &BasicBlockData) {
-        walk_basic_block(self, bb);
+    fn visit_basic_block(&mut self, _bb: BasicBlock, bb_data: &BasicBlockData) {
+        walk_basic_block(self, bb_data);
     }
 
     fn visit_instr(&mut self, instr: &Instruction) {

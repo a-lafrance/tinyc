@@ -161,8 +161,16 @@ impl BasicBlockData {
         self.body.push(instr);
     }
 
+    pub fn fallthrough_dest(&self) -> Option<BasicBlock> {
+        self.fallthrough_dest
+    }
+
     pub fn set_fallthrough_dest(&mut self, dest: BasicBlock) {
         self.fallthrough_dest = Some(dest);
+    }
+
+    pub fn branch_dest(&self) -> Option<BasicBlock> {
+        self.branch_dest
     }
 
     pub fn set_branch_dest(&mut self, dest: BasicBlock) {
