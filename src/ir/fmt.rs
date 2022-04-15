@@ -71,11 +71,12 @@ impl<W: Write> IrFormatVisitor<W> {
 
 impl<W: Write> IrVisitor for IrFormatVisitor<W> {
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
-        self.result = write!(self.writer, "{}:\n", bb);
+        self.result = writeln!(self.writer, "{}:", bb);
         visit::walk_basic_block(self, bb_data);
+        writeln!(self.writer).ok();
     }
 
     fn visit_instr(&mut self, instr: &Instruction) {
-        self.result = write!(self.writer, "\t{}\n", instr);
+        self.result = writeln!(self.writer, "  {}", instr);
     }
 }
