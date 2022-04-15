@@ -8,8 +8,11 @@ Roadmap for goals to accomplish this quarter:
 
 ### Must Have
 - [x] Basic frontend (scanner, parser, AST)
-- [ ] IR instruction set design
-- [ ] IR generation from AST
+- [x] IR instruction set design
+- [x] IR generation from AST
+- [ ] IR formatting
+  - [x] Text (like weird assembly)
+  - [ ] Graph
 - [ ] IR-based optimizations
 
 ### Should Have
