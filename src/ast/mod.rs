@@ -7,7 +7,6 @@ use crate::utils::RelOp;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Computation {
-    pub vars: Vec<VarDecl>,
     pub funcs: Vec<FuncDecl>,
     pub body: Block,
 }
@@ -17,23 +16,7 @@ pub struct FuncDecl {
     pub returns_void: bool,
     pub name: String,
     pub params: Vec<String>,
-    pub vars: Vec<VarDecl>,
     pub body: Block,
-}
-
-// TODO: i'm pretty sure we can eliminate this entirely. it carries no useful semantic info beyond defining symbols,
-// which can be confined solely to parsing. no one after the parser needs to care about what vars were declared,
-// so this doesn't carry any useful info beyond the act of parsing and checking if a symbol is defined
-#[derive(Clone, Debug, PartialEq)]
-pub struct VarDecl {
-    pub vars: Vec<String>,
-}
-
-impl VarDecl {
-    #[cfg(test)]
-    pub fn empty() -> VarDecl {
-        VarDecl { vars: vec![] }
-    }
 }
 
 /* EXPRESSIONS */
