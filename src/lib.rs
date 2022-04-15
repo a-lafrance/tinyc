@@ -22,8 +22,8 @@ struct Config {
     #[clap(help = "The source file to compile")]
     input: String,
 
-    #[clap(short, long, default_value = "out", help = "The output file path")]
-    output: String,
+    #[clap(short, long, help = "The output file path")]
+    output: Option<String>,
 
     #[clap(long)]
     dump_ir: bool,
@@ -49,7 +49,14 @@ where
             let ir = IrStore::from(ast);
 
             if config.dump_ir {
-                IrFormatter::fmt(&mut io::stdout(), &ir).expect("failed to dump IR");
+                // FIXME: better error handling when opening outfile
+                let mut outfile = config.output.map(|f| File::create(f).expect("failed to open output file"));
+                let fmt_result = match outfile.as_mut() {
+                    Some(outfile) => IrFormatter::fmt(outfile, &ir),
+                    None => IrFormatter::fmt(&mut io::stdout(), &ir),
+                };
+
+                fmt_result.expect("failed to dump IR");
             }
         },
 
