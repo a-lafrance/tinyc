@@ -286,20 +286,17 @@ mod tests {
 
         let mut v = VisitChecker::new();
         let comp = Computation {
-            vars: vec![VarDecl { vars: vec![] }, VarDecl { vars: vec![] }],
             funcs: vec![
                 FuncDecl {
                     returns_void: true,
                     name: "empty".to_string(),
                     params: vec![],
-                    vars: vec![],
                     body: Block::empty(),
                 },
                 FuncDecl {
                     returns_void: true,
                     name: "empty2".to_string(),
                     params: vec![],
-                    vars: vec![],
                     body: Block::empty(),
                 },
             ],
@@ -307,7 +304,7 @@ mod tests {
         };
 
         v.visit_computation(&comp);
-        assert_eq!(v.0, "mainvvfdbfdbb");
+        assert_eq!(v.0, "mainfdbfdbb");
     }
 
     #[test]
@@ -406,12 +403,11 @@ mod tests {
             returns_void: true,
             name: "empty".to_string(),
             params: vec![],
-            vars: vec![VarDecl::empty(), VarDecl::empty()],
             body: Block::empty(),
         };
 
         v.visit_func_decl(&decl);
-        assert_eq!(v.0, "fdvvb");
+        assert_eq!(v.0, "fdb");
     }
 
     #[test]

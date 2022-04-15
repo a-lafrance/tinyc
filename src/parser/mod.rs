@@ -417,7 +417,6 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
-            vars: vec![VarDecl { vars: vec!["x".to_string()] }],
             funcs: vec![],
             body: Block {
                 body: vec![
@@ -471,10 +470,6 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
-            vars: vec![
-                VarDecl { vars: vec!["a".to_string(), "b".to_string()] },
-                VarDecl { vars: vec!["c".to_string()] },
-            ],
             funcs: vec![],
             body: Block {
                 body: vec![
@@ -550,13 +545,11 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
-            vars: vec![],
             funcs: vec![
                 FuncDecl {
                     returns_void: false,
                     name: "add".to_string(),
                     params: vec!["x".to_string(), "y".to_string()],
-                    vars: vec![],
                     body: Block {
                         body: vec![
                             Stmt::Return(Return {
@@ -705,15 +698,11 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
-            vars: vec![
-                VarDecl { vars: vec!["x".to_string(), "y".to_string()] },
-            ],
             funcs: vec![
                 FuncDecl {
                     returns_void: false,
                     name: "add".to_string(),
                     params: vec!["x".to_string(), "y".to_string()],
-                    vars: vec![],
                     body: Block {
                         body: vec![
                             Stmt::Return(Return {
@@ -738,7 +727,6 @@ mod tests {
                     returns_void: false,
                     name: "double".to_string(),
                     params: vec!["n".to_string()],
-                    vars: vec![],
                     body: Block {
                         body: vec![
                             Stmt::Return(Return {
@@ -958,15 +946,11 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(parser.parse_computation(), Ok(Computation {
-            vars: vec![
-                VarDecl { vars: vec!["in".to_string(), "cmp".to_string(), "result".to_string()] },
-            ],
             funcs: vec![
                 FuncDecl {
                     returns_void: false,
                     name: "square".to_string(),
                     params: vec!["n".to_string()],
-                    vars: vec![],
                     body: Block {
                         body: vec![
                             Stmt::Return(Return {
@@ -988,7 +972,6 @@ mod tests {
                     returns_void: false,
                     name: "big".to_string(),
                     params: vec!["n".to_string()],
-                    vars: vec![],
                     body: Block {
                         body: vec![
                             Stmt::If(IfStmt {
@@ -1532,7 +1515,6 @@ mod tests {
             returns_void: true,
             name: "empty".to_string(),
             params: vec![],
-            vars: vec![],
             body: Block::empty(),
         }));
     }
@@ -1564,7 +1546,6 @@ mod tests {
             returns_void: false,
             name: "const".to_string(),
             params: vec![],
-            vars: vec![],
             body: Block {
                 body: vec![
                     Stmt::Return(Return { value: Some(Expr {
@@ -1609,7 +1590,6 @@ mod tests {
             returns_void: false,
             name: "square".to_string(),
             params: vec!["n".to_string()],
-            vars: vec![],
             body: Block {
                 body: vec![
                     Stmt::Return(Return { value: Some(Expr {
@@ -1662,7 +1642,6 @@ mod tests {
             returns_void: false,
             name: "add".to_string(),
             params: vec!["x".to_string(), "y".to_string(), "z".to_string()],
-            vars: vec![],
             body: Block {
                 body: vec![
                     Stmt::Return(Return { value: Some(Expr {
@@ -1720,7 +1699,6 @@ mod tests {
             returns_void: true,
             name: "assign".to_string(),
             params: vec![],
-            vars: vec![VarDecl { vars: vec!["x".to_string()] }],
             body: Block {
                 body: vec![
                     Stmt::Assignment(Assignment {
@@ -1780,10 +1758,6 @@ mod tests {
             returns_void: true,
             name: "add".to_string(),
             params: vec![],
-            vars: vec![
-                VarDecl { vars: vec!["x".to_string(), "y".to_string()] },
-                VarDecl { vars: vec!["result".to_string()] },
-            ],
             body: Block {
                 body: vec![
                     Stmt::Assignment(Assignment {
@@ -1863,7 +1837,6 @@ mod tests {
             returns_void: false,
             name: "gtz".to_string(),
             params: vec!["n".to_string()],
-            vars: vec![VarDecl { vars: vec!["result".to_string()] }],
             body: Block {
                 body: vec![
                     Stmt::If(IfStmt {
@@ -3229,44 +3202,6 @@ mod tests {
             Ok(Term {
                 root: Factor::Number(x),
                 ops: vec![(op1, Factor::Number(y)), (op2, Factor::Number(z)),],
-            })
-        );
-    }
-
-    #[test]
-    fn parse_var_decl_single_var() {
-        let tokens = stream_from_tokens(vec![
-            Token::Keyword(Keyword::Var),
-            Token::Ident("asg".to_string()),
-            Token::Punctuation(';'),
-        ]);
-        let mut parser = Parser::debug(tokens).unwrap();
-
-        assert_eq!(
-            parser.parse_var_decl(SymbolTable::DEBUG_SCOPE),
-            Ok(VarDecl {
-                vars: vec!["asg".to_string()],
-            })
-        );
-    }
-
-    #[test]
-    fn parse_var_decl_many_vars() {
-        let tokens = stream_from_tokens(vec![
-            Token::Keyword(Keyword::Var),
-            Token::Ident("x".to_string()),
-            Token::Punctuation(','),
-            Token::Ident("y".to_string()),
-            Token::Punctuation(','),
-            Token::Ident("z".to_string()),
-            Token::Punctuation(';'),
-        ]);
-        let mut parser = Parser::debug(tokens).unwrap();
-
-        assert_eq!(
-            parser.parse_var_decl(SymbolTable::DEBUG_SCOPE),
-            Ok(VarDecl {
-                vars: vec!["x".to_string(), "y".to_string(), "z".to_string()],
             })
         );
     }
