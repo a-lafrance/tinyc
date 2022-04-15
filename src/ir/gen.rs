@@ -7,7 +7,7 @@ use crate::{
     utils::Builtin,
 };
 use super::{
-    isa::{BasicBlock, BasicBlockData, BranchOpcode, InstrData, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, BasicBlockData, BranchOpcode, Instruction, StoredBinaryOpcode, Value},
     IrStore,
 };
 
@@ -92,7 +92,7 @@ impl IrGenerator {
             let phi_val = self.alloc_val();
             self.store.push_instr(
                 dest,
-                InstrData::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
             );
 
             // update join block val table
@@ -118,7 +118,7 @@ impl AstVisitor for IrGenerator {
         let bb = self.current_block.expect("invariant violated: basic block not created for block");
 
         if block.is_empty() {
-            self.store.push_instr(bb, InstrData::Nop);
+            self.store.push_instr(bb, Instruction::Nop);
         } else {
             visit::walk_block(self, block);
         }
@@ -131,7 +131,7 @@ impl AstVisitor for IrGenerator {
         self.store.set_root_block(main_block);
         self.store.push_instr(
             self.current_block.expect("invariant violated: expected block"),
-            InstrData::End
+            Instruction::End
         );
     }
 
@@ -143,7 +143,7 @@ impl AstVisitor for IrGenerator {
             self.visit_term(term);
             let rhs = self.last_val.expect("invariant violated: expected expr");
             let result = self.alloc_val();
-            let instr = InstrData::StoredBinaryOp {
+            let instr = Instruction::StoredBinaryOp {
                 opcode: StoredBinaryOpcode::from(*op),
                 src1: lhs,
                 src2: rhs,
@@ -172,13 +172,13 @@ impl AstVisitor for IrGenerator {
                 let val = self.alloc_val();
                 self.last_val = Some(val);
 
-                InstrData::Read(val)
+                Instruction::Read(val)
             },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
-                InstrData::Write(self.last_val.expect("invariant violated: expected expr"))
+                Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
             },
-            Some(Builtin::OutputNewLine) => InstrData::Writeln,
+            Some(Builtin::OutputNewLine) => Instruction::Writeln,
             None => unimplemented!(),
         };
 
@@ -253,7 +253,7 @@ impl AstVisitor for IrGenerator {
                 let dest_val = self.alloc_val();
                 self.store.assign_in_bb(start_bb, var.clone(), dest_val);
 
-                (var, InstrData::StoredBinaryOp {
+                (var, Instruction::StoredBinaryOp {
                     opcode: StoredBinaryOpcode::Phi,
                     src1: old_val,
                     src2: Value(0),
@@ -273,7 +273,7 @@ impl AstVisitor for IrGenerator {
 
         for (var, mut phi) in phis.into_iter() {
             match phi {
-                InstrData::StoredBinaryOp { ref mut src2, .. } => *src2 = self.store
+                Instruction::StoredBinaryOp { ref mut src2, .. } => *src2 = self.store
                     .val_in_bb(body_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
@@ -296,7 +296,7 @@ impl AstVisitor for IrGenerator {
 
         self.store.push_instr(
             self.current_block.expect("invariant violated: func call must be in block"),
-            InstrData::Cmp(lhs, rhs)
+            Instruction::Cmp(lhs, rhs)
         );
     }
 
@@ -312,7 +312,7 @@ impl AstVisitor for IrGenerator {
             self.visit_factor(factor);
             let rhs = self.last_val.expect("invariant violated: expected expr");
             let result = self.alloc_val();
-            let instr = InstrData::StoredBinaryOp {
+            let instr = Instruction::StoredBinaryOp {
                 opcode: StoredBinaryOpcode::from(*op),
                 src1: lhs,
                 src2: rhs,
@@ -348,7 +348,7 @@ impl ConstAllocator {
         let prelude_block = store.make_new_basic_block();
 
         for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
-            store.push_instr(prelude_block, InstrData::Const(n, val));
+            store.push_instr(prelude_block, Instruction::Const(n, val));
         }
 
         if let Some(root) = store.root_block() {

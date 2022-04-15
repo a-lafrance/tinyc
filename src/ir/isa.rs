@@ -7,11 +7,8 @@ use crate::{
     utils::RelOp,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Instruction(pub usize);
-
-#[derive(Debug)]
-pub enum InstrData {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Instruction {
     Const(u32, Value),
     Cmp(Value, Value),
     Branch(BranchOpcode, BasicBlock),
@@ -23,18 +20,18 @@ pub enum InstrData {
     Nop,
 }
 
-impl Display for InstrData {
+impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            InstrData::Const(n, dest) => write!(f, "{} = const {}", dest, n),
-            InstrData::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
-            InstrData::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
-            InstrData::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
-            InstrData::Read(dest) => write!(f, "{} = read", dest),
-            InstrData::Write(src) => write!(f, "write {}", src),
-            InstrData::Writeln => write!(f, "writeln"),
-            InstrData::End => write!(f, "end"),
-            InstrData::Nop => write!(f, "nop"),
+            Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
+            Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
+            Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
+            Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
+            Instruction::Read(dest) => write!(f, "{} = read", dest),
+            Instruction::Write(src) => write!(f, "write {}", src),
+            Instruction::Writeln => write!(f, "writeln"),
+            Instruction::End => write!(f, "end"),
+            Instruction::Nop => write!(f, "nop"),
         }
     }
 }
@@ -109,7 +106,7 @@ impl From<TermOp> for StoredBinaryOpcode {
 
 
 // wrapper around interned index
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BasicBlock(pub usize);
 
 impl Display for BasicBlock {
@@ -144,6 +141,10 @@ impl BasicBlockData {
         }
     }
 
+    pub fn body(&self) -> &[Instruction] {
+        &self.body
+    }
+
     pub fn get_val(&self, var: &str) -> Option<Value> {
         self.val_table.get(var).copied()
     }
@@ -160,8 +161,16 @@ impl BasicBlockData {
         self.body.push(instr);
     }
 
+    pub fn fallthrough_dest(&self) -> Option<BasicBlock> {
+        self.fallthrough_dest
+    }
+
     pub fn set_fallthrough_dest(&mut self, dest: BasicBlock) {
         self.fallthrough_dest = Some(dest);
+    }
+
+    pub fn branch_dest(&self) -> Option<BasicBlock> {
+        self.branch_dest
     }
 
     pub fn set_branch_dest(&mut self, dest: BasicBlock) {
