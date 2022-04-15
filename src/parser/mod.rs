@@ -4,7 +4,7 @@ mod stream;
 use crate::{
     ast::{
         Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop,
-        Relation, Return, Stmt, Term, VarDecl,
+        Relation, Return, Stmt, Term,
     },
     scanner::TokenResult,
     semcheck,
@@ -81,12 +81,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let scope_name = Keyword::Main.to_string();
         self.sym_table.insert_scope(scope_name.clone());
 
-        let mut vars = vec![];
-        let mut funcs = vec![];
-
         while let Some(Keyword::Var) = self.stream.try_peek_keyword() {
-            vars.push(self.parse_var_decl(&scope_name)?);
+            self.parse_var_decl(&scope_name)?;
         }
+
+        let mut funcs = vec![];
 
         while self.stream.try_consume_matching_punctuation('{').is_err() {
             funcs.push(self.parse_func_decl()?);
@@ -96,7 +95,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.stream.try_consume_matching_punctuation('}')?;
         self.stream.try_consume_matching_punctuation('.')?;
 
-        Ok(Computation { vars, funcs, body })
+        Ok(Computation { funcs, body })
     }
 
     pub fn parse_expr(&mut self) -> ParseResult<Expr> {
@@ -171,10 +170,8 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         self.stream.try_consume_matching_punctuation(';')?;
 
-        let mut vars = vec![];
-
         while self.stream.try_consume_matching_punctuation('{').is_err() {
-            vars.push(self.parse_var_decl(&name)?);
+            self.parse_var_decl(&name)?;
         }
 
         let body = if self.stream.try_consume_matching_punctuation('}').is_ok() {
@@ -187,7 +184,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         };
 
         self.stream.try_consume_matching_punctuation(';')
-            .map(|_| FuncDecl { returns_void, name, params, vars, body })
+            .map(|_| FuncDecl { returns_void, name, params, body })
     }
 
     pub fn parse_if_stmt(&mut self, scope: &str) -> ParseResult<IfStmt> {
@@ -266,22 +263,20 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Ok(Term { root, ops })
     }
 
-    pub fn parse_var_decl(&mut self, scope: &str) -> ParseResult<VarDecl> {
+    pub fn parse_var_decl(&mut self, scope: &str) -> ParseResult<()> {
         self.stream.try_consume_matching_keyword(Keyword::Var)?;
-        let mut vars = vec![self.stream.try_consume_ident()?];
+
+        let var = self.stream.try_consume_ident()?;
+        self.sym_table.insert_var(scope, var).ok();
 
         while self.stream.try_consume_matching_punctuation(';').is_err() {
             self.stream.try_consume_matching_punctuation(',')?;
+
             let var = self.stream.try_consume_ident()?;
-
-            vars.push(var);
+            self.sym_table.insert_var(scope, var).ok();
         }
 
-        for var in vars.iter().cloned() {
-            self.sym_table.insert_var(scope, var).ok(); // it's guaranteed for the scope to exist
-        }
-
-        Ok(VarDecl { vars })
+        Ok(())
     }
 }
 

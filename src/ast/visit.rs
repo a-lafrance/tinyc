@@ -1,4 +1,4 @@
-use super::{Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Stmt, Term, VarDecl};
+use super::{Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Stmt, Term};
 
 // Credit where credit is due, the design of this visitor system is pretty heavily inspired by Rustc's own AST visitor.
 // If you're into that sort of thing, take a look here: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_ast/visit/trait.Visitor.html
@@ -55,9 +55,6 @@ pub trait AstVisitor: Sized {
     fn visit_term(&mut self, term: &Term) {
         walk_term(self, term);
     }
-
-    // i don't think this will ever be useful, beyond maybe printing the ast
-    fn visit_var_decl(&mut self, _: &VarDecl) { }
 }
 
 pub fn walk_assignment(visitor: &mut impl AstVisitor, assign: &Assignment) {
@@ -71,10 +68,6 @@ pub fn walk_block(visitor: &mut impl AstVisitor, block: &Block) {
 }
 
 pub fn walk_computation(visitor: &mut impl AstVisitor, comp: &Computation) {
-    for var_decl in comp.vars.iter() {
-        visitor.visit_var_decl(var_decl);
-    }
-
     for func_decl in comp.funcs.iter() {
         visitor.visit_func_decl(func_decl);
     }
@@ -105,10 +98,6 @@ pub fn walk_func_call(visitor: &mut impl AstVisitor, call: &FuncCall) {
 }
 
 pub fn walk_func_decl(visitor: &mut impl AstVisitor, decl: &FuncDecl) {
-    for var_decl in decl.vars.iter() {
-        visitor.visit_var_decl(var_decl);
-    }
-
     visitor.visit_block(&decl.body);
 }
 
@@ -237,10 +226,6 @@ mod tests {
         fn visit_term(&mut self, term: &Term) {
             self.0.push('t');
             walk_term(self, term);
-        }
-
-        fn visit_var_decl(&mut self, _: &VarDecl) {
-            self.0.push('v');
         }
     }
 
