@@ -5,12 +5,11 @@ pub mod visit;
 use crate::ast::Computation;
 use self::{
     gen::IrGenerator,
-    isa::{BasicBlock, BasicBlockData, BranchOpcode, InstrData, Instruction, Value},
+    isa::{BasicBlock, BasicBlockData, BranchOpcode, Instruction, Value},
 };
 
 #[derive(Debug)]
 pub struct IrStore {
-    instrs: Vec<InstrData>,
     blocks: Vec<BasicBlockData>,
     root: Option<BasicBlock>,
 }
@@ -18,7 +17,6 @@ pub struct IrStore {
 impl IrStore {
     pub fn new() -> IrStore {
         IrStore {
-            instrs: vec![],
             blocks: vec![],
             root: None,
         }
@@ -62,16 +60,8 @@ impl IrStore {
         BasicBlock(self.blocks.len() - 1)
     }
 
-    pub fn instr(&self, i: Instruction) -> InstrData {
-        self.instrs[i.0]
-    }
-
-    pub fn push_instr(&mut self, block: BasicBlock, instr_data: InstrData) -> Instruction {
-        self.instrs.push(instr_data);
-        let instr = Instruction(self.instrs.len() - 1);
-        self.blocks[block.0].push_instr(instr);
-
-        instr
+    pub fn push_instr(&mut self, block: BasicBlock, instr: Instruction) {
+        self.basic_block_data_mut(block).push_instr(instr);
     }
 
     pub fn connect_via_fallthrough(&mut self, src: BasicBlock, dest: BasicBlock) {
@@ -80,7 +70,7 @@ impl IrStore {
 
     pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
         self.basic_block_data_mut(src).set_branch_dest(dest);
-        self.push_instr(src, InstrData::Branch(branch_type, dest));
+        self.push_instr(src, Instruction::Branch(branch_type, dest));
     }
 }
 

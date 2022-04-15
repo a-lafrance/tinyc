@@ -7,20 +7,8 @@ use crate::{
     utils::RelOp,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Instruction(pub usize);
-
-
-// Instructions clearly are lightweight enough to be copied, since they're a max of what, like 20 bytes?
-// actually i guess that's longer than a lot of integer types which isn't ideal but it's a huge pain to deal with
-// all these crazy move semantics.
-// here's my proposed plan:
-    // 1) rather than interning instructions separately for god knows why, each basic block should own its instructions
-    //    this is fine because any given instruction can only ever be in one basic block, so interning them separately makes no sense
-    // 2) they should no longer by copyable, and instead should just belong to the basic block (Clone is still fine)
-    // 3) now the visitor trait should work fine
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum InstrData {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Instruction {
     Const(u32, Value),
     Cmp(Value, Value),
     Branch(BranchOpcode, BasicBlock),
@@ -32,18 +20,18 @@ pub enum InstrData {
     Nop,
 }
 
-impl Display for InstrData {
+impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            InstrData::Const(n, dest) => write!(f, "{} = const {}", dest, n),
-            InstrData::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
-            InstrData::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
-            InstrData::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
-            InstrData::Read(dest) => write!(f, "{} = read", dest),
-            InstrData::Write(src) => write!(f, "write {}", src),
-            InstrData::Writeln => write!(f, "writeln"),
-            InstrData::End => write!(f, "end"),
-            InstrData::Nop => write!(f, "nop"),
+            Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
+            Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
+            Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
+            Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
+            Instruction::Read(dest) => write!(f, "{} = read", dest),
+            Instruction::Write(src) => write!(f, "write {}", src),
+            Instruction::Writeln => write!(f, "writeln"),
+            Instruction::End => write!(f, "end"),
+            Instruction::Nop => write!(f, "nop"),
         }
     }
 }
@@ -151,6 +139,10 @@ impl BasicBlockData {
             fallthrough_dest: None,
             branch_dest: None,
         }
+    }
+
+    pub fn body(&self) -> &[Instruction] {
+        &self.body
     }
 
     pub fn get_val(&self, var: &str) -> Option<Value> {

@@ -1,11 +1,11 @@
-use super::isa::{BasicBlock, BasicBlockData, BranchOpcode, InstrData, StoredBinaryOpcode, Value};
+use super::isa::{BasicBlock, BasicBlockData, BranchOpcode, Instruction, StoredBinaryOpcode, Value};
 
 pub trait IrVisitor: Sized {
     fn visit_basic_block(&mut self, bb: &BasicBlockData) {
         walk_basic_block(self, bb);
     }
 
-    fn visit_instr(&mut self, instr: &InstrData) {
+    fn visit_instr(&mut self, instr: &Instruction) {
         walk_instr(self, instr);
     }
 
@@ -21,19 +21,21 @@ pub trait IrVisitor: Sized {
 }
 
 pub fn walk_basic_block(v: &mut impl IrVisitor, bb: &BasicBlockData) {
-    todo!();
+    for instr in bb.body().iter() {
+        v.visit_instr(instr);
+    }
 }
 
-pub fn walk_instr(v: &mut impl IrVisitor, instr: &InstrData) {
+pub fn walk_instr(v: &mut impl IrVisitor, instr: &Instruction) {
     match instr {
-        InstrData::Branch(opcode, dest) => v.visit_branch_instr(*opcode, *dest),
-        InstrData::Cmp(lhs, rhs) => v.visit_cmp_instr(*lhs, *rhs),
-        InstrData::Const(const_val, dest) => v.visit_const_instr(*const_val, *dest),
-        InstrData::End => v.visit_end_instr(),
-        InstrData::Nop => v.visit_nop_instr(),
-        InstrData::Read(dest) => v.visit_read_instr(*dest),
-        InstrData::StoredBinaryOp { opcode, src1, src2, dest } => v.visit_stored_binop_instr(*opcode, *src1, *src2, *dest),
-        InstrData::Write(src) => v.visit_write_instr(*src),
-        InstrData::Writeln => v.visit_writeln_instr(),
+        Instruction::Branch(opcode, dest) => v.visit_branch_instr(*opcode, *dest),
+        Instruction::Cmp(lhs, rhs) => v.visit_cmp_instr(*lhs, *rhs),
+        Instruction::Const(const_val, dest) => v.visit_const_instr(*const_val, *dest),
+        Instruction::End => v.visit_end_instr(),
+        Instruction::Nop => v.visit_nop_instr(),
+        Instruction::Read(dest) => v.visit_read_instr(*dest),
+        Instruction::StoredBinaryOp { opcode, src1, src2, dest } => v.visit_stored_binop_instr(*opcode, *src1, *src2, *dest),
+        Instruction::Write(src) => v.visit_write_instr(*src),
+        Instruction::Writeln => v.visit_writeln_instr(),
     }
 }
