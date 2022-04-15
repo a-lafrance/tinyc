@@ -10,7 +10,16 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Instruction(pub usize);
 
-#[derive(Debug)]
+
+// Instructions clearly are lightweight enough to be copied, since they're a max of what, like 20 bytes?
+// actually i guess that's longer than a lot of integer types which isn't ideal but it's a huge pain to deal with
+// all these crazy move semantics.
+// here's my proposed plan:
+    // 1) rather than interning instructions separately for god knows why, each basic block should own its instructions
+    //    this is fine because any given instruction can only ever be in one basic block, so interning them separately makes no sense
+    // 2) they should no longer by copyable, and instead should just belong to the basic block (Clone is still fine)
+    // 3) now the visitor trait should work fine
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InstrData {
     Const(u32, Value),
     Cmp(Value, Value),

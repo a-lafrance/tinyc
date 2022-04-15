@@ -1,5 +1,6 @@
 mod gen;
 pub mod isa;
+pub mod visit;
 
 use crate::ast::Computation;
 use self::{
@@ -59,6 +60,10 @@ impl IrStore {
     fn push_basic_block(&mut self, bb: BasicBlockData) -> BasicBlock {
         self.blocks.push(bb);
         BasicBlock(self.blocks.len() - 1)
+    }
+
+    pub fn instr(&self, i: Instruction) -> InstrData {
+        self.instrs[i.0]
     }
 
     pub fn push_instr(&mut self, block: BasicBlock, instr_data: InstrData) -> Instruction {
