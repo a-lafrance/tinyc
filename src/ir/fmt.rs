@@ -113,7 +113,7 @@ impl<W: Write> IrWriter for TextWriter<W> {
 
 impl<W: Write> IrVisitor for TextWriter<W> {
     fn visit_instr(&mut self, instr: &Instruction) {
-        if let Ok(_) = self.1 {
+        if self.1.is_ok() {
             self.1 = writeln!(self.0, "  {}", instr);
         }
     }
@@ -168,7 +168,7 @@ impl<W: Write> IrVisitor for GraphWriter<W> {
 
         // for rest of instrs, visit
         for instr in bb_data.body().iter().skip(1) {
-            if let Ok(_) = self.1 {
+            if self.1.is_ok() {
                 self.1 = write!(self.0, "|");
             }
 
@@ -177,7 +177,7 @@ impl<W: Write> IrVisitor for GraphWriter<W> {
     }
 
     fn visit_instr(&mut self, instr: &Instruction) {
-        if let Ok(_) = self.1 {
+        if self.1.is_ok() {
             self.1 = write!(self.0, "{}", instr);
         }
     }
