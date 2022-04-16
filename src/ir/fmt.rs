@@ -9,22 +9,26 @@ use super::{
     IrStore,
 };
 
-pub struct IrFormatter<W: Write> {
-    fmt: IrFormatVisitor<W>,
+pub trait IrFormat: IrVisitor {
+    fn fmt(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()>;
+}
+
+pub struct IrFormatter<Formatter: IrFormat> {
+    fmt: Formatter,
     visited: HashSet<BasicBlock>,
 }
 
-impl<W: Write> IrFormatter<W> {
-    fn new(writer: W) -> IrFormatter<W> {
+impl<Formatter: IrFormat> IrFormatter<Formatter> {
+    fn new(fmt: Formatter) -> IrFormatter<Formatter> {
         IrFormatter {
-            fmt: IrFormatVisitor::new(writer),
+            fmt,
             visited: HashSet::new(),
         }
     }
 
-    pub fn fmt(writer: W, ir: &IrStore) -> io::Result<()> {
+    pub fn fmt(fmt: Formatter, ir: &IrStore) -> io::Result<()> {
         match ir.root_block() {
-            Some(root) => IrFormatter::new(writer).fmt_basic_block(root, ir),
+            Some(root) => IrFormatter::new(fmt).fmt_basic_block(root, ir),
             None => Ok(()),
         }
     }
@@ -49,18 +53,18 @@ impl<W: Write> IrFormatter<W> {
     /// This function only exists to make error handling nicer
     fn fmt_single_basic_block<'ir>(&mut self, bb: BasicBlock, store: &'ir IrStore) -> io::Result<&'ir BasicBlockData> {
         let bb_data = store.basic_block_data(bb);
-        self.fmt.visit_basic_block(bb, bb_data);
-        self.fmt.take_result().map(|_| bb_data)
+        self.fmt.fmt(bb, bb_data).map(|_| bb_data)
     }
 }
 
-struct IrFormatVisitor<W: Write> {
+
+pub struct TextFormat<W: Write> {
     writer: W,
     result: io::Result<()>,
 }
 
-impl<W: Write> IrFormatVisitor<W> {
-    fn new(writer: W) -> Self {
+impl<W: Write> TextFormat<W> {
+    pub fn new(writer: W) -> Self {
         Self { writer, result: Ok(()) }
     }
 
@@ -69,7 +73,14 @@ impl<W: Write> IrFormatVisitor<W> {
     }
 }
 
-impl<W: Write> IrVisitor for IrFormatVisitor<W> {
+impl<W: Write> IrFormat for TextFormat<W> {
+    fn fmt(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+        self.visit_basic_block(bb, bb_data);
+        self.take_result()
+    }
+}
+
+impl<W: Write> IrVisitor for TextFormat<W> {
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
         self.result = writeln!(self.writer, "{}:", bb);
         visit::walk_basic_block(self, bb_data);

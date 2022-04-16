@@ -11,7 +11,7 @@ pub(crate) mod utils;
 
 use std::{ffi::OsString, fs::File, io::{self, Read}};
 use self::{
-    ir::{fmt::IrFormatter, IrStore},
+    ir::{fmt::{IrFormatter, TextFormat}, IrStore},
     parser::Parser,
 };
 use clap::Parser as ArgParse;
@@ -52,8 +52,8 @@ where
                 // FIXME: better error handling when opening outfile
                 let mut outfile = config.output.map(|f| File::create(f).expect("failed to open output file"));
                 let fmt_result = match outfile.as_mut() {
-                    Some(outfile) => IrFormatter::fmt(outfile, &ir),
-                    None => IrFormatter::fmt(&mut io::stdout(), &ir),
+                    Some(outfile) => IrFormatter::fmt(TextFormat::new(outfile), &ir),
+                    None => IrFormatter::fmt(TextFormat::new(&mut io::stdout()), &ir),
                 };
 
                 fmt_result.expect("failed to dump IR");
