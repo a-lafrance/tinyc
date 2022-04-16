@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Display, Formatter},
+    mem,
     str::FromStr,
 };
 
@@ -105,4 +106,9 @@ impl Display for Builtin {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
+}
+
+
+pub fn take_result<T: Default, E>(result: &mut Result<T, E>) -> Result<T, E> {
+    mem::replace(result, Ok(T::default()))
 }

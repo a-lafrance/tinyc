@@ -1,5 +1,5 @@
 use std::env;
 
 fn main() {
-    tinyc::start(env::args());
+    tinyc::driver::start(env::args());
 }
