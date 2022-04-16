@@ -138,10 +138,10 @@ impl<W: Write> IrWriter for GraphWriter<W> {
 
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         write!(self.0, "{0} [shape=record, label=\"<b>{0} | {{", bb)?;
+        
         self.visit_basic_block(bb, bb_data);
         take_result(&mut self.1)?;
 
-        // TODO: chain the results together appropriately
         writeln!(self.0, "}}\"];")?;
 
         // FIXME: this feels like repeat code from above
@@ -161,7 +161,6 @@ impl<W: Write> IrVisitor for GraphWriter<W> {
     fn visit_basic_block(&mut self, _: BasicBlock, bb_data: &BasicBlockData) {
         // manually enumerate through the statements and emit stuff for them
         // visit first instr
-        // TODO: handle errors throughout
         if let Some(first_instr) = bb_data.body().first() {
             self.visit_instr(first_instr);
         }
