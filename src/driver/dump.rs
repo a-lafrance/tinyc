@@ -45,7 +45,7 @@ impl Error for InvalidDumpFormat { }
 
 fn make_ir_dump_fmt<W: Write>(dump_fmt: IrDumpFormat, wr: W) -> IrFormat<W> {
     match dump_fmt {
-        IrDumpFormat::Text => IrFormat::Text(TextWriter(wr)),
-        IrDumpFormat::Graph => IrFormat::Graph(GraphWriter(wr)),
+        IrDumpFormat::Text => IrFormat::Text(TextWriter::new(wr)),
+        IrDumpFormat::Graph => IrFormat::Graph(GraphWriter::new(wr)),
     }
 }

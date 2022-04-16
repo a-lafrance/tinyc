@@ -1,11 +1,11 @@
 use std::{
     collections::HashSet,
     io::{self, Write},
-    mem,
 };
+use crate::utils::take_result;
 use super::{
     isa::{BasicBlock, BasicBlockData, Instruction},
-    visit::{self, IrVisitor},
+    visit::IrVisitor,
     IrStore,
 };
 
@@ -86,7 +86,13 @@ impl<W: Write> IrWriter for IrFormat<W> {
     }
 }
 
-pub struct TextWriter<W: Write>(pub W);
+pub struct TextWriter<W: Write>(W, FmtResult);
+
+impl<W: Write> TextWriter<W> {
+    pub fn new(wr: W) -> TextWriter<W> {
+        TextWriter(wr, Ok(()))
+    }
+}
 
 impl<W: Write> IrWriter for TextWriter<W> {
     fn write_prologue(&mut self) -> FmtResult {
@@ -98,29 +104,28 @@ impl<W: Write> IrWriter for TextWriter<W> {
     }
 
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
-        writeln!(self.0, "{}:", bb);
+        writeln!(self.0, "{}:", bb)?;
         self.visit_basic_block(bb, bb_data);
+        take_result(&mut self.1)?;
         writeln!(self.0)
     }
 }
 
 impl<W: Write> IrVisitor for TextWriter<W> {
     fn visit_instr(&mut self, instr: &Instruction) {
-        writeln!(self.0, "  {}", instr);
+        if let Ok(_) = self.1 {
+            self.1 = writeln!(self.0, "  {}", instr);
+        }
     }
 }
 
-pub struct GraphWriter<W: Write>(pub W);
+pub struct GraphWriter<W: Write>(W, FmtResult);
 
-// impl<W: Write> GraphFormat<W> {
-//     pub fn new(writer: W) -> Self {
-//         Self { writer, result: Ok(()) }
-//     }
-//
-//     fn take_result(&mut self) -> io::Result<()> {
-//         mem::replace(&mut self.result, Ok(()))
-//     }
-// }
+impl<W: Write> GraphWriter<W> {
+    pub fn new(wr: W) -> GraphWriter<W> {
+        GraphWriter(wr, Ok(()))
+    }
+}
 
 impl<W: Write> IrWriter for GraphWriter<W> {
     fn write_prologue(&mut self) -> FmtResult {
@@ -134,6 +139,7 @@ impl<W: Write> IrWriter for GraphWriter<W> {
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         write!(self.0, "{0} [shape=record, label=\"<b>{0} | {{", bb)?;
         self.visit_basic_block(bb, bb_data);
+        take_result(&mut self.1)?;
 
         // TODO: chain the results together appropriately
         writeln!(self.0, "}}\"];")?;
@@ -147,8 +153,7 @@ impl<W: Write> IrWriter for GraphWriter<W> {
             writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", bb, branch_bb)?;
         }
 
-        // self.take_result()
-        Ok(()) // TODO
+        Ok(())
     }
 }
 
@@ -163,12 +168,17 @@ impl<W: Write> IrVisitor for GraphWriter<W> {
 
         // for rest of instrs, visit
         for instr in bb_data.body().iter().skip(1) {
-            write!(self.0, "|");
+            if let Ok(_) = self.1 {
+                self.1 = write!(self.0, "|");
+            }
+
             self.visit_instr(instr);
         }
     }
 
     fn visit_instr(&mut self, instr: &Instruction) {
-        write!(self.0, "{}", instr);
+        if let Ok(_) = self.1 {
+            self.1 = write!(self.0, "{}", instr);
+        }
     }
 }
