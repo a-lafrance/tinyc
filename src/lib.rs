@@ -9,9 +9,16 @@ pub(crate) mod sym;
 pub(crate) mod tok;
 pub(crate) mod utils;
 
-use std::{ffi::OsString, fs::File, io::{self, Read}};
+use std::{
+    error::Error,
+    ffi::OsString,
+    fmt::{self, Display, Formatter},
+    fs::File,
+    io::{self, Read, Write},
+    str::FromStr,
+};
 use self::{
-    ir::{fmt::{IrFormatter, TextFormat}, IrStore},
+    ir::{fmt::{GraphWriter, IrFormat, IrFormatter, TextWriter}, IrStore},
     parser::Parser,
 };
 use clap::Parser as ArgParse;
@@ -25,9 +32,49 @@ struct Config {
     #[clap(short, long, help = "The output file path")]
     output: Option<String>,
 
-    #[clap(long)]
-    dump_ir: bool,
+    #[clap(long, help = "Format to dump generated IR")]
+    dump_ir: Option<IrDumpFormat>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IrDumpFormat {
+    Text, Graph
+}
+
+impl FromStr for IrDumpFormat {
+    type Err = InvalidDumpFormat;
+
+    fn from_str(s: &str) -> Result<IrDumpFormat, Self::Err> {
+        match s {
+            "text" => Ok(IrDumpFormat::Text),
+            "graph" => Ok(IrDumpFormat::Graph),
+            other => Err(InvalidDumpFormat(other.to_string())),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct InvalidDumpFormat(String);
+
+impl Display for InvalidDumpFormat {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for InvalidDumpFormat { }
+
+fn make_ir_dump_fmt<W: Write>(dump_fmt: IrDumpFormat, wr: W) -> IrFormat<W> {
+    match dump_fmt {
+        IrDumpFormat::Text => IrFormat::Text(TextWriter(wr)),
+        IrDumpFormat::Graph => IrFormat::Graph(GraphWriter(wr)),
+    }
+}
+
+fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> io::Result<()> {
+    IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr)).fmt(ir)
+}
+
 
 pub fn start<Args, T>(args: Args)
 where
@@ -48,15 +95,15 @@ where
         Ok(ast) => {
             let ir = IrStore::from(ast);
 
-            if config.dump_ir {
+            if let Some(dump_fmt) = config.dump_ir {
                 // FIXME: better error handling when opening outfile
                 let mut outfile = config.output.map(|f| File::create(f).expect("failed to open output file"));
-                let fmt_result = match outfile.as_mut() {
-                    Some(outfile) => IrFormatter::fmt(TextFormat::new(outfile), &ir),
-                    None => IrFormatter::fmt(TextFormat::new(&mut io::stdout()), &ir),
+                let dump_result = match outfile.as_mut() {
+                    Some(outfile) => dump_ir(dump_fmt, outfile, &ir),
+                    None => dump_ir(dump_fmt, &mut io::stdout(), &ir),
                 };
 
-                fmt_result.expect("failed to dump IR");
+                dump_result.expect("failed to dump IR");
             }
         },
 

@@ -9,41 +9,34 @@ use super::{
     IrStore,
 };
 
-pub trait IrFormat: IrVisitor {
-    fn fmt(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()>;
-}
+pub struct IrFormatter<W: Write>(IrFormat<W>);
 
-pub struct IrFormatter<Formatter: IrFormat> {
-    fmt: Formatter,
-    visited: HashSet<BasicBlock>,
-}
-
-impl<Formatter: IrFormat> IrFormatter<Formatter> {
-    fn new(fmt: Formatter) -> IrFormatter<Formatter> {
-        IrFormatter {
-            fmt,
-            visited: HashSet::new(),
-        }
+impl<W: Write> IrFormatter<W> {
+    pub fn new(fmt: IrFormat<W>) -> IrFormatter<W> {
+        IrFormatter(fmt)
     }
 
-    pub fn fmt(fmt: Formatter, ir: &IrStore) -> io::Result<()> {
-        match ir.root_block() {
-            Some(root) => IrFormatter::new(fmt).fmt_basic_block(root, ir),
-            None => Ok(()),
+    pub fn fmt(&mut self, ir: &IrStore) -> io::Result<()> {
+        self.0.write_prologue()?;
+
+        if let Some(root) = ir.root_block() {
+            self.fmt_basic_block(root, ir, &mut HashSet::new())?;
         }
+
+        self.0.write_epilogue()
     }
 
-    fn fmt_basic_block(&mut self, bb: BasicBlock, store: &IrStore) -> io::Result<()> {
-        if !self.visited.contains(&bb) {
-            self.visited.insert(bb);
-            let bb_data = self.fmt_single_basic_block(bb, store)?;
+    fn fmt_basic_block(&mut self, bb: BasicBlock, ir: &IrStore, visited: &mut HashSet<BasicBlock>) -> io::Result<()> {
+        if !visited.contains(&bb) {
+            visited.insert(bb);
+            let bb_data = self.fmt_single_basic_block(bb, ir)?;
 
             if let Some(fallthrough_bb) = bb_data.fallthrough_dest() {
-                self.fmt_basic_block(fallthrough_bb, store)?;
+                self.fmt_basic_block(fallthrough_bb, ir, visited)?;
             }
 
             if let Some(branch_bb) = bb_data.branch_dest() {
-                self.fmt_basic_block(branch_bb, store)?;
+                self.fmt_basic_block(branch_bb, ir, visited)?;
             }
         }
 
@@ -53,41 +46,127 @@ impl<Formatter: IrFormat> IrFormatter<Formatter> {
     /// This function only exists to make error handling nicer
     fn fmt_single_basic_block<'ir>(&mut self, bb: BasicBlock, store: &'ir IrStore) -> io::Result<&'ir BasicBlockData> {
         let bb_data = store.basic_block_data(bb);
-        self.fmt.fmt(bb, bb_data).map(|_| bb_data)
+        self.0.write_basic_block(bb, bb_data).map(|_| bb_data)
     }
 }
 
-
-pub struct TextFormat<W: Write> {
-    writer: W,
-    result: io::Result<()>,
+trait IrWriter {
+    fn write_prologue(&mut self) -> io::Result<()>;
+    fn write_epilogue(&mut self) -> io::Result<()>;
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()>;
 }
 
-impl<W: Write> TextFormat<W> {
-    pub fn new(writer: W) -> Self {
-        Self { writer, result: Ok(()) }
+pub enum IrFormat<W: Write> {
+    Text(TextWriter<W>),
+    Graph(GraphWriter<W>),
+}
+
+impl<W: Write> IrWriter for IrFormat<W> {
+    fn write_prologue(&mut self) -> io::Result<()> {
+        match self {
+            IrFormat::Text(wr) => wr.write_prologue(),
+            IrFormat::Graph(wr) => wr.write_prologue(),
+        }
     }
 
-    fn take_result(&mut self) -> io::Result<()> {
-        mem::replace(&mut self.result, Ok(()))
+    fn write_epilogue(&mut self) -> io::Result<()> {
+        match self {
+            IrFormat::Text(wr) => wr.write_epilogue(),
+            IrFormat::Graph(wr) => wr.write_epilogue(),
+        }
+    }
+
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+        match self {
+            IrFormat::Text(wr) => wr.write_basic_block(bb, bb_data),
+            IrFormat::Graph(wr) => wr.write_basic_block(bb, bb_data),
+        }
     }
 }
 
-impl<W: Write> IrFormat for TextFormat<W> {
-    fn fmt(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+pub struct TextWriter<W: Write>(pub W);
+
+impl<W: Write> IrWriter for TextWriter<W> {
+    fn write_prologue(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn write_epilogue(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+        writeln!(self.0, "{}:", bb);
         self.visit_basic_block(bb, bb_data);
-        self.take_result()
+        writeln!(self.0)
     }
 }
 
-impl<W: Write> IrVisitor for TextFormat<W> {
-    fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
-        self.result = writeln!(self.writer, "{}:", bb);
-        visit::walk_basic_block(self, bb_data);
-        writeln!(self.writer).ok();
+impl<W: Write> IrVisitor for TextWriter<W> {
+    fn visit_instr(&mut self, instr: &Instruction) {
+        writeln!(self.0, "  {}", instr);
+    }
+}
+
+pub struct GraphWriter<W: Write>(pub W);
+
+// impl<W: Write> GraphFormat<W> {
+//     pub fn new(writer: W) -> Self {
+//         Self { writer, result: Ok(()) }
+//     }
+//
+//     fn take_result(&mut self) -> io::Result<()> {
+//         mem::replace(&mut self.result, Ok(()))
+//     }
+// }
+
+impl<W: Write> IrWriter for GraphWriter<W> {
+    fn write_prologue(&mut self) -> io::Result<()> {
+        writeln!(self.0, "digraph CFG {{")
+    }
+
+    fn write_epilogue(&mut self) -> io::Result<()> {
+        writeln!(self.0, "}}")
+    }
+
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+        write!(self.0, "{0} [shape=record, label=\"<b>{0} | {{", bb)?;
+        self.visit_basic_block(bb, bb_data);
+
+        // TODO: chain the results together appropriately
+        writeln!(self.0, "}}\"];")?;
+
+        // FIXME: this feels like repeat code from above
+        if let Some(fallthrough_bb) = bb_data.fallthrough_dest() {
+            writeln!(self.0, "{}:s -> {}:n [label=\"fallthrough\"];", bb, fallthrough_bb)?;
+        }
+
+        if let Some(branch_bb) = bb_data.branch_dest() {
+            writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", bb, branch_bb)?;
+        }
+
+        // self.take_result()
+        Ok(()) // TODO
+    }
+}
+
+impl<W: Write> IrVisitor for GraphWriter<W> {
+    fn visit_basic_block(&mut self, _: BasicBlock, bb_data: &BasicBlockData) {
+        // manually enumerate through the statements and emit stuff for them
+        // visit first instr
+        // TODO: handle errors throughout
+        if let Some(first_instr) = bb_data.body().first() {
+            self.visit_instr(first_instr);
+        }
+
+        // for rest of instrs, visit
+        for instr in bb_data.body().iter().skip(1) {
+            write!(self.0, "|");
+            self.visit_instr(instr);
+        }
     }
 
     fn visit_instr(&mut self, instr: &Instruction) {
-        self.result = writeln!(self.writer, "  {}", instr);
+        write!(self.0, "{}", instr);
     }
 }
