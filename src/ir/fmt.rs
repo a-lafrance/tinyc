@@ -9,6 +9,8 @@ use super::{
     IrStore,
 };
 
+pub type FmtResult = io::Result<()>;
+
 pub struct IrFormatter<W: Write>(IrFormat<W>);
 
 impl<W: Write> IrFormatter<W> {
@@ -16,7 +18,7 @@ impl<W: Write> IrFormatter<W> {
         IrFormatter(fmt)
     }
 
-    pub fn fmt(&mut self, ir: &IrStore) -> io::Result<()> {
+    pub fn fmt(&mut self, ir: &IrStore) -> FmtResult {
         self.0.write_prologue()?;
 
         if let Some(root) = ir.root_block() {
@@ -26,7 +28,7 @@ impl<W: Write> IrFormatter<W> {
         self.0.write_epilogue()
     }
 
-    fn fmt_basic_block(&mut self, bb: BasicBlock, ir: &IrStore, visited: &mut HashSet<BasicBlock>) -> io::Result<()> {
+    fn fmt_basic_block(&mut self, bb: BasicBlock, ir: &IrStore, visited: &mut HashSet<BasicBlock>) -> FmtResult {
         if !visited.contains(&bb) {
             visited.insert(bb);
             let bb_data = self.fmt_single_basic_block(bb, ir)?;
@@ -51,9 +53,9 @@ impl<W: Write> IrFormatter<W> {
 }
 
 trait IrWriter {
-    fn write_prologue(&mut self) -> io::Result<()>;
-    fn write_epilogue(&mut self) -> io::Result<()>;
-    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()>;
+    fn write_prologue(&mut self) -> FmtResult;
+    fn write_epilogue(&mut self) -> FmtResult;
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult;
 }
 
 pub enum IrFormat<W: Write> {
@@ -62,21 +64,21 @@ pub enum IrFormat<W: Write> {
 }
 
 impl<W: Write> IrWriter for IrFormat<W> {
-    fn write_prologue(&mut self) -> io::Result<()> {
+    fn write_prologue(&mut self) -> FmtResult {
         match self {
             IrFormat::Text(wr) => wr.write_prologue(),
             IrFormat::Graph(wr) => wr.write_prologue(),
         }
     }
 
-    fn write_epilogue(&mut self) -> io::Result<()> {
+    fn write_epilogue(&mut self) -> FmtResult {
         match self {
             IrFormat::Text(wr) => wr.write_epilogue(),
             IrFormat::Graph(wr) => wr.write_epilogue(),
         }
     }
 
-    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         match self {
             IrFormat::Text(wr) => wr.write_basic_block(bb, bb_data),
             IrFormat::Graph(wr) => wr.write_basic_block(bb, bb_data),
@@ -87,15 +89,15 @@ impl<W: Write> IrWriter for IrFormat<W> {
 pub struct TextWriter<W: Write>(pub W);
 
 impl<W: Write> IrWriter for TextWriter<W> {
-    fn write_prologue(&mut self) -> io::Result<()> {
+    fn write_prologue(&mut self) -> FmtResult {
         Ok(())
     }
 
-    fn write_epilogue(&mut self) -> io::Result<()> {
+    fn write_epilogue(&mut self) -> FmtResult {
         Ok(())
     }
 
-    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         writeln!(self.0, "{}:", bb);
         self.visit_basic_block(bb, bb_data);
         writeln!(self.0)
@@ -121,15 +123,15 @@ pub struct GraphWriter<W: Write>(pub W);
 // }
 
 impl<W: Write> IrWriter for GraphWriter<W> {
-    fn write_prologue(&mut self) -> io::Result<()> {
+    fn write_prologue(&mut self) -> FmtResult {
         writeln!(self.0, "digraph CFG {{")
     }
 
-    fn write_epilogue(&mut self) -> io::Result<()> {
+    fn write_epilogue(&mut self) -> FmtResult {
         writeln!(self.0, "}}")
     }
 
-    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> io::Result<()> {
+    fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         write!(self.0, "{0} [shape=record, label=\"<b>{0} | {{", bb)?;
         self.visit_basic_block(bb, bb_data);
 

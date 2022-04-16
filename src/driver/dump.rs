@@ -1,15 +1,15 @@
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    io::{self, Write},
+    io::Write,
     str::FromStr,
 };
 use crate::ir::{
-    fmt::{GraphWriter, IrFormat, IrFormatter, TextWriter},
+    fmt::{FmtResult, GraphWriter, IrFormat, IrFormatter, TextWriter},
     IrStore,
 };
 
-pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> io::Result<()> {
+pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> FmtResult {
     IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr)).fmt(ir)
 }
 
