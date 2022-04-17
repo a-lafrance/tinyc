@@ -11,6 +11,7 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR instruction set design
 - [x] IR generation from AST
   - [x] Support for user-defined functions
+  - [ ] Refactor to the "instruction pointer" IR model
 - [x] IR formatting
   - [x] Text (like weird assembly)
   - [x] Graph
@@ -20,7 +21,9 @@ Roadmap for goals to accomplish this quarter:
 
 ### Should Have
 - [ ] DLX backend & codegen
-- [ ] Constant propagation
+- [ ] More optimizations
+  - [ ] Constant propagation
+  - [ ] Dead code elimination
 - [ ] Optimization levels
   * Just the general idea of providing a way to opt in or out of certain advanced features
   * Mainly useful for offering a "standard" mode which enables exactly the set of features required for CS 142B, and then other mode(s) for advanced stuff
