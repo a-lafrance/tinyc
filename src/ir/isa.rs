@@ -78,7 +78,7 @@ impl Body {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
     Branch(BranchOpcode, BasicBlock),
-    Call(String, Option<Value>),
+    Call(String, Value),
     Const(u32, Value),
     Cmp(Value, Value),
     End,
@@ -95,8 +95,7 @@ pub enum Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Instruction::Call(func, Some(val)) => write!(f, "{} = call {}", val, func),
-            Instruction::Call(func, None) => write!(f, "call {}", func),
+            Instruction::Call(func, dest) => write!(f, "{} = call {}", dest, func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),

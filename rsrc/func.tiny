@@ -1,4 +1,5 @@
 main
+var a, b, c;
 
 void function empty();
 {
@@ -11,5 +12,13 @@ function add(x, y);
 };
 
 {
+    let a <- call InputNum();
+    let b <- call InputNum();
+    let c <- call add(a, b);
+
+    call OutputNum(c);
+    call OutputNewLine();
+
+    call OutputNum(call add(a + 1, b + 1));
     call OutputNewLine();
 }.

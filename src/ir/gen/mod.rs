@@ -224,7 +224,22 @@ impl AstVisitor for IrBodyGenerator {
                 Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
             },
             Some(Builtin::OutputNewLine) => Instruction::Writeln,
-            None => unimplemented!(), // TODO
+            None => {
+                // push all args
+                let block = self.current_block.expect("invariant violated: must be in block");
+                for arg in call.args.iter() {
+                    self.visit_expr(arg);
+                    self.body.push_instr(
+                        block,
+                        Instruction::Push(self.last_val.expect("invariant violated: arg must have val")),
+                    );
+                }
+
+                // buffer call instr
+                let dest_val = self.alloc_val();
+                self.last_val = Some(dest_val);
+                Instruction::Call(call.name.clone(), dest_val)
+            },
         };
 
         self.body.push_instr(

@@ -10,7 +10,7 @@ pub trait IrVisitor: Sized {
     }
 
     fn visit_branch_instr(&mut self, _opcode: BranchOpcode, _dest: BasicBlock) { }
-    fn visit_call_instr(&mut self, _func: &str, _dest: Option<Value>) { }
+    fn visit_call_instr(&mut self, _func: &str, _dest: Value) { }
     fn visit_cmp_instr(&mut self, _lhs: Value, _rhs: Value) { }
     fn visit_const_instr(&mut self, _const_val: u32, _dest: Value) { }
     fn visit_end_instr(&mut self) { }
