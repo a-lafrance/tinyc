@@ -1,0 +1,10 @@
+main
+
+void function empty();
+{
+
+};
+
+{
+    call OutputNewLine();
+}.

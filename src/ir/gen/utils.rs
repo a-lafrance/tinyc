@@ -14,6 +14,10 @@ impl ConstAllocator {
         ConstAllocator(HashMap::new())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn get(&self, n: u32) -> Option<Value> {
         self.0.get(&n).copied()
     }
@@ -23,17 +27,19 @@ impl ConstAllocator {
     }
 
     pub fn make_prelude_block(&self, body: &mut Body) {
-        let prelude_block = body.make_new_basic_block();
+        if !self.is_empty() {
+            let prelude_block = body.make_new_basic_block();
 
-        for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
-            body.push_instr(prelude_block, Instruction::Const(n, val));
+            for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
+                body.push_instr(prelude_block, Instruction::Const(n, val));
+            }
+
+            if let Some(root) = body.root_block() {
+                body.connect_via_fallthrough(prelude_block, root);
+            }
+
+            body.set_root_block(prelude_block);
         }
-
-        if let Some(root) = body.root_block() {
-            body.connect_via_fallthrough(prelude_block, root);
-        }
-
-        body.set_root_block(prelude_block);
     }
 }
 

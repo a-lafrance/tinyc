@@ -2,7 +2,7 @@ mod utils;
 
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Term,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Term,
         visit::{self, AstVisitor},
     },
     utils::{Builtin, Keyword},
@@ -233,8 +233,12 @@ impl AstVisitor for IrBodyGenerator {
         );
     }
 
-    fn visit_func_decl(&mut self, _decl: &FuncDecl) {
-        // walk_func_decl(self, decl);
+    fn visit_func_decl(&mut self, decl: &FuncDecl) {
+        // TODO: pop params
+        let root = self.fill_basic_block();
+        visit::walk_func_decl(self, decl);
+
+        self.body.set_root_block(root);
     }
 
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
@@ -344,9 +348,21 @@ impl AstVisitor for IrBodyGenerator {
         );
     }
 
-    // fn visit_return(&mut self, ret: &Return) {
-    //     walk_return(self, ret);
-    // }
+    /*
+    function add(x, y);
+    {
+        return x + y;
+    };
+
+    */
+    fn visit_return(&mut self, ret: &Return) {
+        visit::walk_return(self, ret);
+
+        self.body.push_instr(
+            self.current_block.expect("invariant violated: return must be in block"),
+            Instruction::Return(self.last_val),
+        );
+    }
 
     fn visit_term(&mut self, term: &Term) {
         self.visit_factor(&term.root);
