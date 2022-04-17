@@ -3,10 +3,9 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 use crate::{
-    ast::{Computation, FactorOp, TermOp},
+    ast::{FactorOp, TermOp},
     utils::RelOp,
 };
-use super::gen::IrGenerator;
 
 
 #[derive(Debug)]
@@ -72,13 +71,6 @@ impl Body {
     pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
         self.basic_block_data_mut(src).set_branch_dest(dest);
         self.push_instr(src, Instruction::Branch(branch_type, dest));
-    }
-}
-
-// TODO: change this
-impl From<Computation> for Body {
-    fn from(ast: Computation) -> Body {
-        IrGenerator::gen(&ast)
     }
 }
 

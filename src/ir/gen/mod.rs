@@ -1,18 +1,60 @@
-use std::collections::{HashMap, HashSet};
+mod utils;
+
 use crate::{
     ast::{
         Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Term,
         visit::{self, AstVisitor},
     },
-    utils::Builtin,
+    utils::{Builtin, Keyword},
 };
+use self::utils::{ConstAllocator, PhiDetectionPass};
 use super::{
-    isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, Instruction, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, Body, BranchOpcode, Instruction, StoredBinaryOpcode, Value},
     IrStore,
 };
 
-pub struct IrGenerator {
-    // store: IrStore,
+
+pub struct IrGenerator(IrStore);
+
+impl IrGenerator {
+    pub fn gen(ast: &Computation) -> IrStore {
+        let mut gen = IrGenerator::new();
+        gen.visit_computation(ast);
+        gen.0
+    }
+
+    fn new() -> IrGenerator {
+        IrGenerator(IrStore::new())
+    }
+}
+
+impl AstVisitor for IrGenerator {
+    fn visit_computation(&mut self, comp: &Computation) {
+        // gen bodies for func decls
+        for func in comp.funcs.iter() {
+            self.visit_func_decl(func);
+        }
+
+        // gen body from computation
+        // register body under keyword main
+        self.0.register(
+            Keyword::Main.to_string(),
+            IrBodyGenerator::gen_from_computation(comp),
+        );
+    }
+
+    fn visit_func_decl(&mut self, func: &FuncDecl) {
+        // gen body from func decl
+        // register body under name of func
+        self.0.register(
+            func.name.clone(),
+            IrBodyGenerator::gen_from_func_decl(func),
+        );
+    }
+}
+
+
+struct IrBodyGenerator {
     body: Body,
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
@@ -20,16 +62,23 @@ pub struct IrGenerator {
     current_block: Option<BasicBlock>,
 }
 
-impl IrGenerator {
-    pub fn gen(ast: &Computation) -> Body {
-        let mut gen = IrGenerator::new();
-        gen.visit_computation(ast);
+impl IrBodyGenerator {
+    pub fn gen_from_computation(comp: &Computation) -> Body {
+        let mut gen = IrBodyGenerator::new();
+        gen.visit_computation(comp);
         gen.const_alloc.make_prelude_block(&mut gen.body);
         gen.body
     }
 
-    fn new() -> IrGenerator {
-        IrGenerator {
+    pub fn gen_from_func_decl(func: &FuncDecl) -> Body {
+        let mut gen = IrBodyGenerator::new();
+        gen.visit_func_decl(func);
+        gen.const_alloc.make_prelude_block(&mut gen.body);
+        gen.body
+    }
+
+    fn new() -> IrBodyGenerator {
+        IrBodyGenerator {
             body: Body::new(),
             const_alloc: ConstAllocator::new(),
             last_val: None,
@@ -105,7 +154,7 @@ impl IrGenerator {
     }
 }
 
-impl AstVisitor for IrGenerator {
+impl AstVisitor for IrBodyGenerator {
     fn visit_assignment(&mut self, assign: &Assignment) {
         self.visit_expr(&assign.value);
         self.body.basic_block_data_mut(self.current_block.expect("invariant violated: can only assign in block"))
@@ -325,68 +374,6 @@ impl AstVisitor for IrGenerator {
                 self.current_block.expect("invariant violated: term must be in block"),
                 instr
             );
-        }
-    }
-}
-
-
-struct ConstAllocator(HashMap<u32, Value>);
-
-impl ConstAllocator {
-    pub fn new() -> ConstAllocator {
-        ConstAllocator(HashMap::new())
-    }
-
-    pub fn get(&self, n: u32) -> Option<Value> {
-        self.0.get(&n).copied()
-    }
-
-    pub fn alloc(&mut self, n: u32, val: Value) {
-        self.0.insert(n, val);
-    }
-
-    pub fn make_prelude_block(&self, body: &mut Body) {
-        let prelude_block = body.make_new_basic_block();
-
-        for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
-            body.push_instr(prelude_block, Instruction::Const(n, val));
-        }
-
-        if let Some(root) = body.root_block() {
-            body.connect_via_fallthrough(prelude_block, root);
-        }
-
-        body.set_root_block(prelude_block);
-    }
-}
-
-
-struct PhiDetectionPass<'bb> {
-    bb: &'bb BasicBlockData,
-    phis: HashSet<String>,
-}
-
-impl<'bb> PhiDetectionPass<'bb> {
-    pub fn run(bb: &'bb BasicBlockData, block: &Block) -> HashSet<String> {
-        let mut pass = PhiDetectionPass::new(bb);
-        pass.visit_block(block);
-
-        pass.phis
-    }
-
-    fn new(bb: &'bb BasicBlockData) -> PhiDetectionPass {
-        PhiDetectionPass {
-            bb,
-            phis: HashSet::new(),
-        }
-    }
-}
-
-impl AstVisitor for PhiDetectionPass<'_> {
-    fn visit_assignment(&mut self, assign: &Assignment) {
-        if self.bb.get_val(&assign.place).is_some() {
-            // NOTE: clone usually not good
-            self.phis.insert(assign.place.clone());
         }
     }
 }

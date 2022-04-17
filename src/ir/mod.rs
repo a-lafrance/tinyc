@@ -3,14 +3,34 @@ mod gen;
 pub mod isa;
 pub mod visit;
 
+use std::collections::HashMap;
 use crate::ast::Computation;
 use self::{
     gen::IrGenerator,
-    isa::{BasicBlock, BasicBlockData, BranchOpcode, Instruction, Value},
+    isa::Body,
 };
 
 #[derive(Debug)]
 pub struct IrStore {
-    blocks: Vec<BasicBlockData>,
-    root: Option<BasicBlock>,
+    bodies: HashMap<String, Body>,
+}
+
+impl IrStore {
+    pub fn new() -> IrStore {
+        IrStore { bodies: HashMap::new() }
+    }
+
+    pub fn bodies(&self) -> &HashMap<String, Body> {
+        &self.bodies
+    }
+
+    pub fn register(&mut self, name: String, body: Body) {
+        self.bodies.insert(name, body);
+    }
+}
+
+impl From<Computation> for IrStore {
+    fn from(comp: Computation) -> IrStore {
+        IrGenerator::gen(&comp)
+    }
 }

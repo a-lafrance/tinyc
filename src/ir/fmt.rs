@@ -6,7 +6,6 @@ use crate::utils::take_result;
 use super::{
     isa::{BasicBlock, BasicBlockData, Body, Instruction},
     visit::IrVisitor,
-    IrStore,
 };
 
 pub type FmtResult = io::Result<()>;
@@ -18,8 +17,8 @@ impl<W: Write> IrFormatter<W> {
         IrFormatter(fmt)
     }
 
-    pub fn fmt(&mut self, body: &Body) -> FmtResult {
-        self.0.write_prologue()?;
+    pub fn fmt(&mut self, name: &str, body: &Body) -> FmtResult {
+        self.0.write_prologue(name)?;
 
         if let Some(root) = body.root_block() {
             self.fmt_basic_block(root, body, &mut HashSet::new())?;
@@ -53,7 +52,7 @@ impl<W: Write> IrFormatter<W> {
 }
 
 trait IrWriter {
-    fn write_prologue(&mut self) -> FmtResult;
+    fn write_prologue(&mut self, body_name: &str) -> FmtResult;
     fn write_epilogue(&mut self) -> FmtResult;
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult;
 }
@@ -64,10 +63,10 @@ pub enum IrFormat<W: Write> {
 }
 
 impl<W: Write> IrWriter for IrFormat<W> {
-    fn write_prologue(&mut self) -> FmtResult {
+    fn write_prologue(&mut self, body_name: &str) -> FmtResult {
         match self {
-            IrFormat::Text(wr) => wr.write_prologue(),
-            IrFormat::Graph(wr) => wr.write_prologue(),
+            IrFormat::Text(wr) => wr.write_prologue(body_name),
+            IrFormat::Graph(wr) => wr.write_prologue(body_name),
         }
     }
 
@@ -95,8 +94,8 @@ impl<W: Write> TextWriter<W> {
 }
 
 impl<W: Write> IrWriter for TextWriter<W> {
-    fn write_prologue(&mut self) -> FmtResult {
-        Ok(())
+    fn write_prologue(&mut self, body_name: &str) -> FmtResult {
+        writeln!(self.0, "@{}:", body_name)
     }
 
     fn write_epilogue(&mut self) -> FmtResult {
@@ -128,8 +127,8 @@ impl<W: Write> GraphWriter<W> {
 }
 
 impl<W: Write> IrWriter for GraphWriter<W> {
-    fn write_prologue(&mut self) -> FmtResult {
-        writeln!(self.0, "digraph CFG {{")
+    fn write_prologue(&mut self, body_name: &str) -> FmtResult {
+        writeln!(self.0, "digraph {} {{", body_name)
     }
 
     fn write_epilogue(&mut self) -> FmtResult {

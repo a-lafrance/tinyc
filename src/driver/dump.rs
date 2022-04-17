@@ -6,11 +6,17 @@ use std::{
 };
 use crate::ir::{
     fmt::{FmtResult, GraphWriter, IrFormat, IrFormatter, TextWriter},
-    isa::Body,
+    IrStore,
 };
 
-pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, body: &Body) -> FmtResult {
-    IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr)).fmt(body)
+pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> FmtResult {
+    let mut f = IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr));
+
+    for (name, body) in ir.bodies() {
+        f.fmt(name, body)?;
+    }
+
+    Ok(())
 }
 
 
