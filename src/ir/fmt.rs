@@ -4,7 +4,7 @@ use std::{
 };
 use crate::utils::take_result;
 use super::{
-    isa::{BasicBlock, BasicBlockData, Instruction},
+    isa::{BasicBlock, BasicBlockData, Body, Instruction},
     visit::IrVisitor,
     IrStore,
 };
@@ -18,27 +18,27 @@ impl<W: Write> IrFormatter<W> {
         IrFormatter(fmt)
     }
 
-    pub fn fmt(&mut self, ir: &IrStore) -> FmtResult {
+    pub fn fmt(&mut self, body: &Body) -> FmtResult {
         self.0.write_prologue()?;
 
-        if let Some(root) = ir.root_block() {
-            self.fmt_basic_block(root, ir, &mut HashSet::new())?;
+        if let Some(root) = body.root_block() {
+            self.fmt_basic_block(root, body, &mut HashSet::new())?;
         }
 
         self.0.write_epilogue()
     }
 
-    fn fmt_basic_block(&mut self, bb: BasicBlock, ir: &IrStore, visited: &mut HashSet<BasicBlock>) -> FmtResult {
+    fn fmt_basic_block(&mut self, bb: BasicBlock, body: &Body, visited: &mut HashSet<BasicBlock>) -> FmtResult {
         if !visited.contains(&bb) {
             visited.insert(bb);
-            let bb_data = self.fmt_single_basic_block(bb, ir)?;
+            let bb_data = self.fmt_single_basic_block(bb, body)?;
 
             if let Some(fallthrough_bb) = bb_data.fallthrough_dest() {
-                self.fmt_basic_block(fallthrough_bb, ir, visited)?;
+                self.fmt_basic_block(fallthrough_bb, body, visited)?;
             }
 
             if let Some(branch_bb) = bb_data.branch_dest() {
-                self.fmt_basic_block(branch_bb, ir, visited)?;
+                self.fmt_basic_block(branch_bb, body, visited)?;
             }
         }
 
@@ -46,8 +46,8 @@ impl<W: Write> IrFormatter<W> {
     }
 
     /// This function only exists to make error handling nicer
-    fn fmt_single_basic_block<'ir>(&mut self, bb: BasicBlock, store: &'ir IrStore) -> io::Result<&'ir BasicBlockData> {
-        let bb_data = store.basic_block_data(bb);
+    fn fmt_single_basic_block<'ir>(&mut self, bb: BasicBlock, body: &'ir Body) -> io::Result<&'ir BasicBlockData> {
+        let bb_data = body.basic_block_data(bb);
         self.0.write_basic_block(bb, bb_data).map(|_| bb_data)
     }
 }
@@ -138,7 +138,7 @@ impl<W: Write> IrWriter for GraphWriter<W> {
 
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {
         write!(self.0, "{0} [shape=record, label=\"<b>{0} | {{", bb)?;
-        
+
         self.visit_basic_block(bb, bb_data);
         take_result(&mut self.1)?;
 

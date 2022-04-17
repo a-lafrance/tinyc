@@ -7,7 +7,7 @@ use std::{
 };
 use clap::Parser as ArgParse;
 use crate::{
-    ir::IrStore,
+    ir::isa::Body,
     parser::Parser,
     scanner,
 };
@@ -43,7 +43,7 @@ where
 
     match Parser::new(tokens).and_then(|mut p| p.parse_computation()) {
         Ok(ast) => {
-            let ir = IrStore::from(ast);
+            let ir = Body::from(ast);
 
             if let Some(dump_fmt) = config.dump_ir {
                 // FIXME: better error handling when opening outfile
