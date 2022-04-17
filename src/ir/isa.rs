@@ -77,25 +77,35 @@ impl Body {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
+    Branch(BranchOpcode, BasicBlock),
+    Call(String, Option<Value>),
     Const(u32, Value),
     Cmp(Value, Value),
-    Branch(BranchOpcode, BasicBlock),
-    StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
-    Read(Value),
-    Write(Value),
-    Writeln,
     End,
     Nop,
+    Pop(Value),
+    Push(Value),
+    Read(Value),
+    Return(Option<Value>),
+    StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
+    Write(Value),
+    Writeln,
 }
 
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            Instruction::Call(func, Some(val)) => write!(f, "{} = call {}", val, func),
+            Instruction::Call(func, None) => write!(f, "call {}", func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
             Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
+            Instruction::Pop(dest) => write!(f, "{} = pop", dest),
+            Instruction::Push(src) => write!(f, "push {}", src),
             Instruction::Read(dest) => write!(f, "{} = read", dest),
+            Instruction::Return(Some(ret_val)) => write!(f, "ret {}", ret_val),
+            Instruction::Return(None) => write!(f, "ret"),
             Instruction::Write(src) => write!(f, "write {}", src),
             Instruction::Writeln => write!(f, "writeln"),
             Instruction::End => write!(f, "end"),

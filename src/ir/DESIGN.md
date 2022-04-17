@@ -32,8 +32,9 @@ Parameters are passed via an imaginary "parameter stack". This is an abstract IR
 The following instructions will be added to the IR ISA to support user-defined functions:
 * `ret` and `ret x`: return, with or without a return value
 * `call func`: call the given function (assumes parameters have been passed already)
+    * question: what about using return values? i say we optionally let this be assigned to a value
 * `push val`: push the next parameter onto the parameter stack
-* `pop val`: pop the top parameter from the parameter stack
+* `pop`: pop the top parameter from the parameter stack
 
 # Edge Cases
 * Instructions that modify and assign to the same variable: `let a <- a + 1`

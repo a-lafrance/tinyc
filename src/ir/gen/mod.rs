@@ -30,13 +30,10 @@ impl IrGenerator {
 
 impl AstVisitor for IrGenerator {
     fn visit_computation(&mut self, comp: &Computation) {
-        // gen bodies for func decls
         for func in comp.funcs.iter() {
             self.visit_func_decl(func);
         }
 
-        // gen body from computation
-        // register body under keyword main
         self.0.register(
             Keyword::Main.to_string(),
             IrBodyGenerator::gen_from_computation(comp),
@@ -44,8 +41,6 @@ impl AstVisitor for IrGenerator {
     }
 
     fn visit_func_decl(&mut self, func: &FuncDecl) {
-        // gen body from func decl
-        // register body under name of func
         self.0.register(
             func.name.clone(),
             IrBodyGenerator::gen_from_func_decl(func),
@@ -229,7 +224,7 @@ impl AstVisitor for IrBodyGenerator {
                 Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
             },
             Some(Builtin::OutputNewLine) => Instruction::Writeln,
-            None => unimplemented!(),
+            None => unimplemented!(), // TODO
         };
 
         self.body.push_instr(
@@ -239,7 +234,6 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_func_decl(&mut self, _decl: &FuncDecl) {
-        // FIXME: ignore for now
         // walk_func_decl(self, decl);
     }
 
