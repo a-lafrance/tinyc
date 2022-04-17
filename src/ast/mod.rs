@@ -116,6 +116,11 @@ pub struct Block {
 }
 
 impl Block {
+    #[cfg(test)]
+    pub fn empty() -> Block {
+        Block { body: vec![] }
+    }
+    
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
