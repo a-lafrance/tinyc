@@ -10,7 +10,13 @@ use crate::ir::{
 };
 
 pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> FmtResult {
-    IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr)).fmt(ir)
+    let mut f = IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr));
+
+    for (name, body) in ir.bodies() {
+        f.fmt(name, body)?;
+    }
+
+    Ok(())
 }
 
 

@@ -10,8 +10,8 @@ Roadmap for goals to accomplish this quarter:
 - [x] Basic frontend (scanner, parser, AST)
 - [x] IR instruction set design
 - [x] IR generation from AST
-  - [ ] Support for user-defined functions
-- [ ] IR formatting
+  - [x] Support for user-defined functions
+- [x] IR formatting
   - [x] Text (like weird assembly)
   - [x] Graph
 - [ ] IR-based optimizations

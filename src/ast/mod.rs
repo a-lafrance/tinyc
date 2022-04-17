@@ -116,10 +116,11 @@ pub struct Block {
 }
 
 impl Block {
+    #[cfg(test)]
     pub fn empty() -> Block {
         Block { body: vec![] }
     }
-
+    
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
@@ -147,6 +148,12 @@ pub struct Loop {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Return {
     pub value: Option<Expr>,
+}
+
+impl Return {
+    pub fn empty() -> Return {
+        Return { value: None }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

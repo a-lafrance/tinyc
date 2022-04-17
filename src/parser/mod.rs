@@ -174,11 +174,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             self.parse_var_decl(&name)?;
         }
 
+        // FIXME: this auto return is technically a little bit redundant but that's a future me problem
+        let auto_return = Stmt::Return(Return::empty());
         let body = if self.stream.try_consume_matching_punctuation('}').is_ok() {
-            Block::empty()
+            Block { body: vec![auto_return] }
         } else {
-            let body = self.parse_block(&name)?;
+            let mut body = self.parse_block(&name)?;
             self.stream.try_consume_matching_punctuation('}')?;
+            body.body.push(auto_return);
 
             body
         };
@@ -565,7 +568,8 @@ mod tests {
                                         })
                                     ]
                                 })
-                            })
+                            }),
+                            Stmt::Return(Return::empty()),
                         ]
                     },
                 }
@@ -718,7 +722,8 @@ mod tests {
                                         })
                                     ]
                                 })
-                            })
+                            }),
+                            Stmt::Return(Return::empty()),
                         ]
                     },
                 },
@@ -737,7 +742,8 @@ mod tests {
                                     },
                                     ops: vec![],
                                 })
-                            })
+                            }),
+                            Stmt::Return(Return::empty()),
                         ]
                     },
                 },
@@ -963,7 +969,8 @@ mod tests {
                                     },
                                     ops: vec![],
                                 })
-                            })
+                            }),
+                            Stmt::Return(Return::empty()),
                         ]
                     },
                 },
@@ -1020,7 +1027,8 @@ mod tests {
                                         })
                                     ],
                                 }),
-                            })
+                            }),
+                            Stmt::Return(Return::empty()),
                         ]
                     },
                 },
@@ -1515,7 +1523,9 @@ mod tests {
             returns_void: true,
             name: "empty".to_string(),
             params: vec![],
-            body: Block::empty(),
+            body: Block {
+                body: vec![Stmt::Return(Return::empty())]
+            },
         }));
     }
 
@@ -1555,6 +1565,7 @@ mod tests {
                         },
                         ops: vec![],
                     })}),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));
@@ -1601,6 +1612,7 @@ mod tests {
                         },
                         ops: vec![],
                     })}),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));
@@ -1660,6 +1672,7 @@ mod tests {
                             })
                         ],
                     })}),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));
@@ -1711,6 +1724,7 @@ mod tests {
                             ops: vec![],
                         },
                     }),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));
@@ -1775,6 +1789,7 @@ mod tests {
                             ],
                         },
                     }),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));
@@ -1898,6 +1913,7 @@ mod tests {
                             ops: vec![],
                         }),
                     }),
+                    Stmt::Return(Return::empty()),
                 ],
             },
         }));

@@ -7,27 +7,104 @@ use crate::{
     utils::RelOp,
 };
 
+
+#[derive(Debug)]
+pub struct Body {
+    blocks: Vec<BasicBlockData>,
+    root: Option<BasicBlock>,
+}
+
+impl Body {
+    pub fn new() -> Body {
+        Body {
+            blocks: vec![],
+            root: None,
+        }
+    }
+
+    pub fn root_block(&self) -> Option<BasicBlock> {
+        self.root
+    }
+
+    pub fn set_root_block(&mut self, bb: BasicBlock) {
+        self.root = Some(bb);
+    }
+
+    pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
+        &self.blocks[bb.0]
+    }
+
+    pub fn basic_block_data_mut(&mut self, bb: BasicBlock) -> &mut BasicBlockData {
+        &mut self.blocks[bb.0]
+    }
+
+    pub fn val_in_bb(&self, bb: BasicBlock, var: &str) -> Option<Value> {
+        self.basic_block_data(bb).get_val(var)
+    }
+
+    pub fn assign_in_bb(&mut self, bb: BasicBlock, var: String, val: Value) {
+        self.basic_block_data_mut(bb).assign(var, val);
+    }
+
+    pub fn make_new_basic_block(&mut self) -> BasicBlock {
+        self.push_basic_block(BasicBlockData::new())
+    }
+
+    pub fn make_new_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
+        let bb = BasicBlockData::new_from(self.basic_block_data(parent));
+        self.push_basic_block(bb)
+    }
+
+    fn push_basic_block(&mut self, bb: BasicBlockData) -> BasicBlock {
+        self.blocks.push(bb);
+        BasicBlock(self.blocks.len() - 1)
+    }
+
+    pub fn push_instr(&mut self, block: BasicBlock, instr: Instruction) {
+        self.basic_block_data_mut(block).push_instr(instr);
+    }
+
+    pub fn connect_via_fallthrough(&mut self, src: BasicBlock, dest: BasicBlock) {
+        self.basic_block_data_mut(src).set_fallthrough_dest(dest);
+    }
+
+    pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
+        self.basic_block_data_mut(src).set_branch_dest(dest);
+        self.push_instr(src, Instruction::Branch(branch_type, dest));
+    }
+}
+
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
+    Branch(BranchOpcode, BasicBlock),
+    Call(String, Value),
     Const(u32, Value),
     Cmp(Value, Value),
-    Branch(BranchOpcode, BasicBlock),
-    StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
-    Read(Value),
-    Write(Value),
-    Writeln,
     End,
     Nop,
+    Pop(Value),
+    Push(Value),
+    Read(Value),
+    Return(Option<Value>),
+    StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
+    Write(Value),
+    Writeln,
 }
 
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            Instruction::Call(func, dest) => write!(f, "{} = call {}", dest, func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
             Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
+            Instruction::Pop(dest) => write!(f, "{} = pop", dest),
+            Instruction::Push(src) => write!(f, "push {}", src),
             Instruction::Read(dest) => write!(f, "{} = read", dest),
+            Instruction::Return(Some(ret_val)) => write!(f, "ret {}", ret_val),
+            Instruction::Return(None) => write!(f, "ret"),
             Instruction::Write(src) => write!(f, "write {}", src),
             Instruction::Writeln => write!(f, "writeln"),
             Instruction::End => write!(f, "end"),
