@@ -5,6 +5,11 @@ void function empty();
 
 };
 
+function add(x, y);
+{
+    return x + y;
+};
+
 {
     call OutputNewLine();
 }.

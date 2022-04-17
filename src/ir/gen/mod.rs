@@ -152,11 +152,11 @@ impl IrBodyGenerator {
 impl AstVisitor for IrBodyGenerator {
     fn visit_assignment(&mut self, assign: &Assignment) {
         self.visit_expr(&assign.value);
-        self.body.basic_block_data_mut(self.current_block.expect("invariant violated: can only assign in block"))
-            .assign(
-                assign.place.clone(),
-                self.last_val.expect("invariant violated: assignment to non-expression"),
-            );
+        self.body.assign_in_bb(
+            self.current_block.expect("invariant violated: can only assign in block"),
+            assign.place.clone(),
+            self.last_val.expect("invariant violated: assignment to non-expression"),
+        );
     }
 
     fn visit_block(&mut self, block: &Block) {
@@ -234,11 +234,16 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_func_decl(&mut self, decl: &FuncDecl) {
-        // TODO: pop params
         let root = self.fill_basic_block();
-        visit::walk_func_decl(self, decl);
-
         self.body.set_root_block(root);
+
+        for param in decl.params.iter().cloned() {
+            let param_val = self.alloc_val();
+            self.body.assign_in_bb(root, param, param_val);
+            self.body.push_instr(root, Instruction::Pop(param_val));
+        }
+
+        visit::walk_func_decl(self, decl);
     }
 
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
@@ -348,13 +353,6 @@ impl AstVisitor for IrBodyGenerator {
         );
     }
 
-    /*
-    function add(x, y);
-    {
-        return x + y;
-    };
-
-    */
     fn visit_return(&mut self, ret: &Return) {
         visit::walk_return(self, ret);
 
