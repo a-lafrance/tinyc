@@ -149,6 +149,12 @@ pub struct Return {
     pub value: Option<Expr>,
 }
 
+impl Return {
+    pub fn empty() -> Return {
+        Return { value: None }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Assignment(Assignment),
