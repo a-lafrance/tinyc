@@ -15,9 +15,12 @@ Roadmap for goals to accomplish this quarter:
   - [x] Text (like weird assembly)
   - [x] Graph
 - [ ] IR-based optimizations
+  - [x] Copy propagation
+  - [ ] Common subexpression elimination
 
 ### Should Have
 - [ ] DLX backend & codegen
+- [ ] Constant propagation
 
 ### Nice to Have
 - [ ] ARM/macOS backend & codegen (with or without system `cc` dependency)
