@@ -153,8 +153,8 @@ impl<W: Write> IrWriter for GraphWriter<W> {
             writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", bb, branch_bb)?;
         }
 
-        if let Some(parent) = bb_data.parent() {
-            writeln!(self.0, "{}:b -> {}:b [color=blue, style=dotted, label=\"dom\"]", parent, bb)?;
+        if let Some(dominator) = bb_data.dominator() {
+            writeln!(self.0, "{}:b -> {}:b [color=blue, style=dotted, label=\"dom\"]", dominator, bb)?;
         }
 
         Ok(())

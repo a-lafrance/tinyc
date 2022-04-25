@@ -76,7 +76,7 @@ impl Body {
     }
 
     pub fn establish_dominance(&mut self, parent: BasicBlock, child: BasicBlock) {
-        self.basic_block_data_mut(child).set_parent(parent);
+        self.basic_block_data_mut(child).set_dominator(parent);
     }
 }
 
@@ -204,7 +204,7 @@ pub struct BasicBlockData {
     val_table: HashMap<String, Value>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
-    parent: Option<BasicBlock>,
+    dominator: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
@@ -212,17 +212,17 @@ impl BasicBlockData {
         BasicBlockData::from(HashMap::new(), None)
     }
 
-    pub fn new_from(bb: &BasicBlockData, parent: BasicBlock) -> BasicBlockData {
-        BasicBlockData::from(bb.val_table.clone(), Some(parent))
+    pub fn new_from(bb: &BasicBlockData, dominator: BasicBlock) -> BasicBlockData {
+        BasicBlockData::from(bb.val_table.clone(), Some(dominator))
     }
 
-    fn from(val_table: HashMap<String, Value>, parent: Option<BasicBlock>) -> BasicBlockData {
+    fn from(val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
             val_table,
             fallthrough_dest: None,
             branch_dest: None,
-            parent
+            dominator
         }
     }
 
@@ -262,13 +262,13 @@ impl BasicBlockData {
         self.branch_dest = Some(dest);
     }
 
-    pub fn parent(&self) -> Option<BasicBlock> {
-        self.parent
+    pub fn dominator(&self) -> Option<BasicBlock> {
+        self.dominator
     }
 
-    pub fn set_parent(&mut self, parent: BasicBlock) {
-        if self.parent.replace(parent).is_some() {
-            panic!("tried to set basic block parent twice");
+    pub fn set_dominator(&mut self, dominator: BasicBlock) {
+        if self.dominator.replace(dominator).is_some() {
+            panic!("tried to set basic block dominator twice");
         }
     }
 
