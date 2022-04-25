@@ -1,13 +1,16 @@
+pub mod info;
+
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     error::Error,
     fmt::{self, Display, Formatter},
 };
-use maplit::{hashmap, hashset};
+use maplit::hashmap;
 use crate::utils::Builtin;
+use self::info::{FuncInfo, ScopeInfo};
 
 pub struct SymbolTable {
-    scopes: HashMap<String, HashSet<String>>,
+    scopes: HashMap<String, ScopeInfo>
 }
 
 impl SymbolTable {
@@ -17,9 +20,20 @@ impl SymbolTable {
     pub fn new() -> SymbolTable {
         SymbolTable {
             scopes: hashmap!{
-                Builtin::InputNum.to_string() => hashset!{},
-                Builtin::OutputNum.to_string() => hashset!{},
-                Builtin::OutputNewLine.to_string() => hashset!{},
+                Builtin::InputNum.to_string() => ScopeInfo::new(Some(FuncInfo {
+                    returns_void: false,
+                    n_params: 0,
+                })),
+
+                Builtin::OutputNum.to_string() => ScopeInfo::new(Some(FuncInfo {
+                    returns_void: true,
+                    n_params: 1,
+                })),
+
+                Builtin::OutputNewLine.to_string() => ScopeInfo::new(Some(FuncInfo {
+                    returns_void: true,
+                    n_params: 0,
+                })),
             }
         }
     }
@@ -35,28 +49,34 @@ impl SymbolTable {
     pub fn insert_var(&mut self, scope: &str, name: String) -> Result<(), UndefinedSymbolError> {
         self.scopes.get_mut(scope)
             .ok_or_else(|| UndefinedSymbolError::RefToUndefinedFunc(scope.to_string()))
-            .map(|vars| {
-                vars.insert(name);
+            .map(|scope| {
+                scope.vars.insert(name);
             })
     }
 
     pub fn contains_var(&self, scope: &str, name: &str) -> bool {
         self.scopes.get(scope)
-            .map(|vars| vars.contains(name))
+            .map(|scope| scope.vars.contains(name))
             .unwrap_or(false)
     }
 
     pub fn insert_scope(&mut self, name: String) {
-        self.scopes.insert(name, hashset!{});
+        self.scopes.insert(name, ScopeInfo::empty());
     }
 
-    pub fn contains_scope(&self, name: &str) -> bool {
-        self.scopes.contains_key(name)
+    pub fn func_info(&self, name: &str) -> Option<&FuncInfo> {
+        self.scopes.get(name).and_then(|scope| scope.func_info.as_ref())
+    }
+
+    pub fn set_func_info(&mut self, name: &str, info: FuncInfo) {
+        if let Some(scope) = self.scopes.get_mut(name) {
+            scope.func_info = Some(info);
+        }
     }
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UndefinedSymbolError {
     RefToUndefinedVar(String),
     RefToUndefinedFunc(String),

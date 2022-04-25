@@ -1,4 +1,4 @@
-mod err;
+pub mod err;
 mod stream;
 
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
     },
     scanner::TokenResult,
     semcheck,
-    sym::SymbolTable,
+    sym::{info::FuncInfo, SymbolTable},
     tok::Token,
     utils::Keyword,
 };
@@ -57,7 +57,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         let place = self.stream.try_consume_ident()?;
         self.stream.try_consume_assign_op()?;
         let value = self.parse_expr()?;
-        semcheck::check_var_is_declared(&self.sym_table, scope, &place)?;
+        semcheck::var_is_declared(&self.sym_table, scope, &place)?;
 
         Ok(Assignment { place, value })
     }
@@ -120,13 +120,13 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             Ok(Factor::Number(n))
         } else {
             match self.stream.try_peek_keyword() {
-                Some(Keyword::Call) => Ok(Factor::Call(self.parse_func_call()?)),
+                Some(Keyword::Call) => Ok(Factor::Call(self.parse_func_call(FuncCallContext::Expr)?)),
                 _ => Ok(Factor::VarRef(self.stream.try_consume_ident()?)),
             }
         }
     }
 
-    pub fn parse_func_call(&mut self) -> ParseResult<FuncCall> {
+    pub fn parse_func_call(&mut self, context: FuncCallContext) -> ParseResult<FuncCall> {
         self.stream.try_consume_matching_keyword(Keyword::Call)?;
         let name = self.stream.try_consume_ident()?;
         let mut args = vec![];
@@ -140,13 +140,14 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             }
         }
 
-        semcheck::check_func_is_defined(&self.sym_table, &name)?;
+        semcheck::is_valid_func_call(&self.sym_table, &name, context)?;
         Ok(FuncCall { name, args })
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
         let returns_void = self.stream.try_consume_matching_keyword(Keyword::Void).is_ok();
         self.stream.try_consume_matching_keyword(Keyword::Function)?;
+
         let name = self.stream.try_consume_ident()?;
         self.stream.try_consume_matching_punctuation('(')?;
         self.sym_table.insert_scope(name.clone());
@@ -186,8 +187,11 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             body
         };
 
-        self.stream.try_consume_matching_punctuation(';')
-            .map(|_| FuncDecl { returns_void, name, params, body })
+        self.stream.try_consume_matching_punctuation(';')?;
+        let decl = FuncDecl { returns_void, name, params, body };
+        self.sym_table.set_func_info(&decl.name, FuncInfo::from(&decl));
+
+        Ok(decl)
     }
 
     pub fn parse_if_stmt(&mut self, scope: &str) -> ParseResult<IfStmt> {
@@ -246,7 +250,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
     pub fn parse_stmt(&mut self, scope: &str) -> ParseResult<Stmt> {
         match self.stream.try_peek_keyword() {
             Some(Keyword::Let) => self.parse_assignment(scope).map(|a| a.into()),
-            Some(Keyword::Call) => self.parse_func_call().map(|c| c.into()),
+            Some(Keyword::Call) => self.parse_func_call(FuncCallContext::Stmt).map(|c| c.into()),
             Some(Keyword::If) => self.parse_if_stmt(scope).map(|i| i.into()),
             Some(Keyword::While) => self.parse_loop(scope).map(|l| l.into()),
             Some(Keyword::Return) => self.parse_return().map(|r| r.into()),
@@ -282,6 +286,12 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         Ok(())
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FuncCallContext {
+    Expr, Stmt,
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -1285,14 +1295,12 @@ mod tests {
 
     #[test]
     fn parse_factor_func_call() {
-        // call OutputNum(5)
-        let func = "OutputNum".to_string();
-        let arg = 5;
+        // call InputNum()
+        let func = "InputNum".to_string();
         let tokens = stream_from_tokens(vec![
             Token::Keyword(Keyword::Call),
             Token::Ident(func.clone()),
             Token::Punctuation('('),
-            Token::Number(arg),
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
@@ -1301,13 +1309,7 @@ mod tests {
             parser.parse_factor(),
             Ok(Factor::Call(FuncCall {
                 name: func,
-                args: vec![Expr {
-                    root: Term {
-                        root: Factor::Number(arg),
-                        ops: vec![],
-                    },
-                    ops: vec![],
-                }],
+                args: vec![],
             }))
         );
     }
@@ -1323,7 +1325,7 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_func_call(),
+            parser.parse_func_call(FuncCallContext::Expr),
             Ok(FuncCall {
                 name: func,
                 args: vec![],
@@ -1344,7 +1346,7 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_func_call(),
+            parser.parse_func_call(FuncCallContext::Expr),
             Ok(FuncCall {
                 name: func,
                 args: vec![],
@@ -1367,7 +1369,7 @@ mod tests {
         let mut parser = Parser::new(tokens).unwrap();
 
         assert_eq!(
-            parser.parse_func_call(),
+            parser.parse_func_call(FuncCallContext::Stmt),
             Ok(FuncCall {
                 name: func,
                 args: vec![Expr {
@@ -1396,9 +1398,13 @@ mod tests {
         ]);
         let mut parser = Parser::new(tokens).unwrap();
         parser.sym_table.insert_scope(func.clone());
+        parser.sym_table.set_func_info(&func, FuncInfo {
+            returns_void: false,
+            n_params: 2,
+        });
 
         assert_eq!(
-            parser.parse_func_call(),
+            parser.parse_func_call(FuncCallContext::Expr),
             Ok(FuncCall {
                 name: func,
                 args: vec![
@@ -1437,9 +1443,13 @@ mod tests {
         ]);
         let mut parser = Parser::new(tokens).unwrap();
         parser.sym_table.insert_scope("max".to_string());
+        parser.sym_table.set_func_info("max", FuncInfo {
+            returns_void: false,
+            n_params: 3,
+        });
 
         assert_eq!(
-            parser.parse_func_call(),
+            parser.parse_func_call(FuncCallContext::Expr),
             Ok(FuncCall {
                 name: "max".to_string(),
                 args: vec![
