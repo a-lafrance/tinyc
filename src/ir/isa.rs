@@ -74,6 +74,10 @@ impl Body {
         self.basic_block_data_mut(src).set_branch_dest(dest);
         self.push_instr(src, Instruction::Branch(branch_type, dest));
     }
+
+    pub fn establish_dominance(&mut self, parent: BasicBlock, child: BasicBlock) {
+        self.basic_block_data_mut(child).set_parent(parent);
+    }
 }
 
 
@@ -260,6 +264,12 @@ impl BasicBlockData {
 
     pub fn parent(&self) -> Option<BasicBlock> {
         self.parent
+    }
+
+    pub fn set_parent(&mut self, parent: BasicBlock) {
+        if self.parent.replace(parent).is_some() {
+            panic!("tried to set basic block parent twice");
+        }
     }
 }
 

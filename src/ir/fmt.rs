@@ -118,6 +118,7 @@ impl<W: Write> IrVisitor for TextWriter<W> {
     }
 }
 
+
 pub struct GraphWriter<W: Write>(W, FmtResult);
 
 impl<W: Write> GraphWriter<W> {
@@ -150,6 +151,10 @@ impl<W: Write> IrWriter for GraphWriter<W> {
 
         if let Some(branch_bb) = bb_data.branch_dest() {
             writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", bb, branch_bb)?;
+        }
+
+        if let Some(parent) = bb_data.parent() {
+            writeln!(self.0, "{}:b -> {}:b [color=blue, style=dotted, label=\"dom\"]", parent, bb)?;
         }
 
         Ok(())
