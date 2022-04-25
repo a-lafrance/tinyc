@@ -81,7 +81,7 @@ impl Body {
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
     Branch(BranchOpcode, BasicBlock),
     Call(String, Value),
@@ -120,7 +120,7 @@ impl Display for Instruction {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BranchOpcode {
     Br, Beq, Bne, Bgt, Bge, Blt, Ble,
 }
@@ -153,7 +153,7 @@ impl From<RelOp> for BranchOpcode {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StoredBinaryOpcode {
     Add, Sub, Mul, Div, Phi,
 }
@@ -274,7 +274,7 @@ impl BasicBlockData {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Value(pub usize);
 
 impl Display for Value {

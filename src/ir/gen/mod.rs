@@ -1,3 +1,4 @@
+mod cse;
 mod utils;
 
 use crate::{
@@ -7,7 +8,10 @@ use crate::{
     },
     utils::{Builtin, Keyword},
 };
-use self::utils::{ConstAllocator, PhiDetectionPass};
+use self::{
+    cse::{CseCache, IndexableInstr},
+    utils::{ConstAllocator, PhiDetectionPass},
+};
 use super::{
     isa::{BasicBlock, Body, BranchOpcode, Instruction, StoredBinaryOpcode, Value},
     IrStore,
@@ -49,12 +53,13 @@ impl AstVisitor for IrGenerator {
 }
 
 
-struct IrBodyGenerator {
+pub struct IrBodyGenerator {
     body: Body,
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
     next_val: Value,
     current_block: Option<BasicBlock>,
+    cse_cache: CseCache,
 }
 
 impl IrBodyGenerator {
@@ -79,6 +84,7 @@ impl IrBodyGenerator {
             last_val: None,
             next_val: Value(0),
             current_block: None,
+            cse_cache: CseCache::new(),
         }
     }
 
@@ -105,12 +111,14 @@ impl IrBodyGenerator {
     fn fill_basic_block(&mut self) -> BasicBlock {
         let bb = self.body.make_new_basic_block();
         self.current_block = Some(bb);
+        self.cse_cache.insert_block(bb);
         bb
     }
 
     fn fill_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
         let bb = self.body.make_new_basic_block_from(base, parent);
         self.current_block = Some(bb);
+        self.cse_cache.insert_block(bb);
         bb
     }
 
@@ -187,19 +195,25 @@ impl AstVisitor for IrBodyGenerator {
             let lhs = self.last_val.expect("invariant violated: expected expr");
             self.visit_term(term);
             let rhs = self.last_val.expect("invariant violated: expected expr");
-            let result = self.alloc_val();
-            let instr = Instruction::StoredBinaryOp {
-                opcode: StoredBinaryOpcode::from(*op),
-                src1: lhs,
-                src2: rhs,
-                dest: result,
-            };
 
-            self.last_val = Some(result);
-            self.body.push_instr(
-                self.current_block.expect("invariant violated: expr must be in block"),
-                instr
-            );
+            let block = self.current_block.expect("invariant violated: expr must be in block");
+            let index_instr = IndexableInstr::from_term_op(*op, lhs, rhs);
+
+            self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                .or_else(|| {
+                    let result = self.alloc_val();
+                    let instr = Instruction::StoredBinaryOp {
+                        opcode: StoredBinaryOpcode::from(*op),
+                        src1: lhs,
+                        src2: rhs,
+                        dest: result,
+                    };
+
+                    self.cse_cache.insert_instr(block, index_instr, result);
+                    self.body.push_instr(block, instr);
+
+                    Some(result)
+                });
         }
     }
 
@@ -217,35 +231,47 @@ impl AstVisitor for IrBodyGenerator {
                 let val = self.alloc_val();
                 self.last_val = Some(val);
 
-                Instruction::Read(val)
+                Some(Instruction::Read(val))
             },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
-                Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
+                Some(Instruction::Write(self.last_val.expect("invariant violated: expected expr")))
             },
-            Some(Builtin::OutputNewLine) => Instruction::Writeln,
+            Some(Builtin::OutputNewLine) => Some(Instruction::Writeln),
             None => {
                 // push all args
                 let block = self.current_block.expect("invariant violated: must be in block");
-                for arg in call.args.iter() {
-                    self.visit_expr(arg);
-                    self.body.push_instr(
-                        block,
-                        Instruction::Push(self.last_val.expect("invariant violated: arg must have val")),
-                    );
-                }
+                let index_instr = IndexableInstr::Call(call.name.clone());
 
-                // buffer call instr
-                let dest_val = self.alloc_val();
+                let (dest_val, instr) = match self.cse_cache.get_common_subexpr(&self.body, block, &index_instr) {
+                    Some(val) => (val, None),
+                    None => {
+                        for arg in call.args.iter() {
+                            self.visit_expr(arg);
+                            self.body.push_instr(
+                                block,
+                                Instruction::Push(self.last_val.expect("invariant violated: arg must have val")),
+                            );
+                        }
+
+                        let dest_val = self.alloc_val();
+                        self.cse_cache.insert_instr(block, index_instr, dest_val);
+
+                        (dest_val, Some(Instruction::Call(call.name.clone(), dest_val)))
+                    }
+                };
+
                 self.last_val = Some(dest_val);
-                Instruction::Call(call.name.clone(), dest_val)
+                instr
             },
         };
 
-        self.body.push_instr(
-            self.current_block.expect("invariant violated: func call must be in block"),
-            instr
-        );
+        if let Some(instr) = instr {
+            self.body.push_instr(
+                self.current_block.expect("invariant violated: func call must be in block"),
+                instr
+            );
+        }
     }
 
     fn visit_func_decl(&mut self, decl: &FuncDecl) {
@@ -384,19 +410,25 @@ impl AstVisitor for IrBodyGenerator {
             let lhs = self.last_val.expect("invariant violated: expected expr");
             self.visit_factor(factor);
             let rhs = self.last_val.expect("invariant violated: expected expr");
-            let result = self.alloc_val();
-            let instr = Instruction::StoredBinaryOp {
-                opcode: StoredBinaryOpcode::from(*op),
-                src1: lhs,
-                src2: rhs,
-                dest: result,
-            };
 
-            self.last_val = Some(result);
-            self.body.push_instr(
-                self.current_block.expect("invariant violated: term must be in block"),
-                instr
-            );
+            let block = self.current_block.expect("invariant violated: term must be in block");
+            let index_instr = IndexableInstr::from_factor_op(*op, lhs, rhs);
+
+            self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                .or_else(|| {
+                    let result = self.alloc_val();
+                    let instr = Instruction::StoredBinaryOp {
+                        opcode: StoredBinaryOpcode::from(*op),
+                        src1: lhs,
+                        src2: rhs,
+                        dest: result,
+                    };
+
+                    self.cse_cache.insert_instr(block, index_instr, result);
+                    self.body.push_instr(block, instr);
+
+                    Some(result)
+                });
         }
     }
 }
