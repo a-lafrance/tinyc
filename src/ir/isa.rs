@@ -22,6 +22,11 @@ impl Body {
         }
     }
 
+    #[cfg(test)]
+    pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
+        Body { blocks, root }
+    }
+
     pub fn root_block(&self) -> Option<BasicBlock> {
         self.root
     }
@@ -244,6 +249,16 @@ impl BasicBlockData {
 
     pub fn new_from(bb: &BasicBlockData, dominator: BasicBlock) -> BasicBlockData {
         BasicBlockData::from(bb.val_table.clone(), Some(dominator))
+    }
+
+    #[cfg(test)]
+    pub fn with(
+        body: Vec<Instruction>,
+        fallthrough_dest: Option<BasicBlock>,
+        branch_dest: Option<BasicBlock>,
+        dominator: Option<BasicBlock>
+    ) -> BasicBlockData {
+        BasicBlockData { body, fallthrough_dest, branch_dest, dominator, val_table: HashMap::new() }
     }
 
     fn from(val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
