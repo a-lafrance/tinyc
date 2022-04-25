@@ -30,6 +30,10 @@ impl Body {
         self.root = Some(bb);
     }
 
+    pub fn root_block_data(&self) -> Option<&BasicBlockData> {
+        self.root.map(|r| &self.blocks[r.0])
+    }
+
     pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
         &self.blocks[bb.0]
     }
@@ -96,6 +100,32 @@ pub enum Instruction {
     StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
     Write(Value),
     Writeln,
+}
+
+impl Instruction {
+    pub fn result_val(&self) -> Option<Value> {
+        match self {
+            Instruction::Call(_, dest) => Some(*dest),
+            Instruction::Const(_, dest) => Some(*dest),
+            Instruction::Pop(dest) => Some(*dest),
+            Instruction::Read(dest) => Some(*dest),
+            Instruction::StoredBinaryOp { dest, .. } => Some(*dest),
+            _ => None,
+        }
+    }
+
+    // We could do some iterator magic here, but that would require an extra allocation anyway
+    // because the iterator types are heterogeneous, so it's just easier to return a vector
+    pub fn operands(&self) -> Vec<Value> {
+        match self {
+            Instruction::Cmp(lhs, rhs) => vec![*lhs, *rhs],
+            Instruction::Push(src) => vec![*src],
+            Instruction::Return(Some(val)) => vec![*val],
+            Instruction::StoredBinaryOp { src1, src2, .. } => vec![*src1, *src2],
+            Instruction::Write(src) => vec![*src],
+            _ => vec![],
+        }
+    }
 }
 
 impl Display for Instruction {
