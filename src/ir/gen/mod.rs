@@ -108,8 +108,8 @@ impl IrBodyGenerator {
         bb
     }
 
-    fn fill_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
-        let bb = self.body.make_new_basic_block_from(parent);
+    fn fill_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
+        let bb = self.body.make_new_basic_block_from(base, parent);
         self.current_block = Some(bb);
         bb
     }
@@ -267,7 +267,7 @@ impl AstVisitor for IrBodyGenerator {
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
         // fill new basic block for then
-        let then_bb = self.fill_basic_block_from(condition_bb);
+        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb);
         self.visit_block(&if_stmt.then_block);
         let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
@@ -276,13 +276,13 @@ impl AstVisitor for IrBodyGenerator {
 
         // pre-allocate join basic block
         // use the then block as the basis for the join block's values to make phi discovery easier
-        let join_bb = self.body.make_new_basic_block_from(then_end_bb);
+        let join_bb = self.body.make_new_basic_block_from(then_end_bb, condition_bb);
 
         // connect inner blocks together depending on presence of else
         let (dest_bb, phi_compare_bb) = match if_stmt.else_block {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
-                let else_bb = self.fill_basic_block_from(condition_bb);
+                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
                 self.visit_block(else_block);
                 let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
 
@@ -311,7 +311,7 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
-        let start_bb = self.body.make_new_basic_block_from(prev_bb);
+        let start_bb = self.body.make_new_basic_block_from(prev_bb, prev_bb);
         self.body.connect_via_fallthrough(prev_bb, start_bb);
 
         let phis = PhiDetectionPass::run(self.body.basic_block_data(start_bb), &loop_stmt.body)
@@ -330,12 +330,12 @@ impl AstVisitor for IrBodyGenerator {
             })
             .collect::<Vec<_>>();
 
-        let body_bb = self.fill_basic_block_from(start_bb);
+        let body_bb = self.fill_basic_block_from(start_bb, start_bb);
         self.body.connect_via_fallthrough(start_bb, body_bb);
         self.visit_block(&loop_stmt.body);
 
         self.body.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
-        let post_bb = self.body.make_new_basic_block_from(start_bb);
+        let post_bb = self.body.make_new_basic_block_from(start_bb, start_bb);
 
         self.current_block = Some(start_bb);
 

@@ -50,8 +50,10 @@ impl Body {
         self.push_basic_block(BasicBlockData::new())
     }
 
-    pub fn make_new_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
-        let bb = BasicBlockData::new_from(self.basic_block_data(parent), parent);
+    /// Base means basic block whose values should serve as the base for the new one
+    /// Parent means parent in the domination hierarchy
+    pub fn make_new_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
+        let bb = BasicBlockData::new_from(self.basic_block_data(base), parent);
         self.push_basic_block(bb)
     }
 
