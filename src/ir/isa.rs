@@ -35,10 +35,6 @@ impl Body {
         self.root = Some(bb);
     }
 
-    pub fn root_block_data(&self) -> Option<&BasicBlockData> {
-        self.root.map(|r| &self.blocks[r.0])
-    }
-
     pub fn basic_block_data(&self, bb: BasicBlock) -> &BasicBlockData {
         &self.blocks[bb.0]
     }
@@ -320,6 +316,38 @@ impl BasicBlockData {
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
+
+    pub fn phis(&self) -> impl Iterator<Item = (Value, Value)> + '_ {
+        self.body().iter().filter_map(|instr|
+            match instr {
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1, src2, .. } => Some((*src1, *src2)),
+                _ => None,
+            }
+        )
+    }
+
+    pub fn control_flow_kind(&self) -> ControlFlowKind {
+        if let Some(ft_dest) = self.fallthrough_dest() {
+            if let Some(br_dest) = self.branch_dest() {
+                // TODO: loops
+                ControlFlowKind::IfStmt(ft_dest, br_dest)
+            } else {
+                ControlFlowKind::FallthroughOnly(ft_dest)
+            }
+        } else if let Some(br_dest) = self.branch_dest() {
+            ControlFlowKind::UnconditionalBranch(br_dest)
+        } else {
+            ControlFlowKind::Leaf
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlFlowKind {
+    Leaf,
+    FallthroughOnly(BasicBlock),
+    UnconditionalBranch(BasicBlock),
+    IfStmt(BasicBlock, BasicBlock),
 }
 
 
