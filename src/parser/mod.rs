@@ -140,8 +140,10 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             }
         }
 
-        semcheck::is_valid_func_call(&self.sym_table, &name, context)?;
-        Ok(FuncCall { name, args })
+        let func_call = FuncCall { name, args };
+        semcheck::is_valid_func_call(&self.sym_table, &func_call, context)?;
+
+        Ok(func_call)
     }
 
     pub fn parse_func_decl(&mut self) -> ParseResult<FuncDecl> {
