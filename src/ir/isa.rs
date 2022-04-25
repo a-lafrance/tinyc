@@ -271,6 +271,10 @@ impl BasicBlockData {
             panic!("tried to set basic block parent twice");
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.body.is_empty()
+    }
 }
 
 

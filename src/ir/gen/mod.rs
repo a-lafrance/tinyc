@@ -169,11 +169,10 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_block(&mut self, block: &Block) {
         let bb = self.current_block.expect("invariant violated: basic block not created for block");
+        visit::walk_block(self, block);
 
-        if block.is_empty() {
+        if self.body.basic_block_data(bb).is_empty() {
             self.body.push_instr(bb, Instruction::Nop);
-        } else {
-            visit::walk_block(self, block);
         }
     }
 

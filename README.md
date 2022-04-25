@@ -15,9 +15,9 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR formatting
   - [x] Text (like weird assembly)
   - [x] Graph
-- [ ] IR-based optimizations
+- [x] IR-based optimizations
   - [x] Copy propagation
-  - [ ] Common subexpression elimination
+  - [x] Common subexpression elimination
 
 ### Should Have
 - [ ] DLX backend & codegen

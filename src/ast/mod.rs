@@ -120,10 +120,6 @@ impl Block {
     pub fn empty() -> Block {
         Block { body: vec![] }
     }
-    
-    pub fn is_empty(&self) -> bool {
-        self.body.is_empty()
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
