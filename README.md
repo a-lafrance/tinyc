@@ -26,6 +26,7 @@ Roadmap for goals to accomplish this quarter:
   - [x] Parser
   - [ ] IR generation
   - [ ] IR optimization (CSE)
+    - [ ] Domination hierarchy construction
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
