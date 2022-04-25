@@ -12,6 +12,7 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR generation from AST
   - [x] Support for user-defined functions
   - [ ] Refactor to the "instruction pointer" IR model
+    * Don't delete the old code, just move it somewhere else (maybe switch back later)
 - [x] IR formatting
   - [x] Text (like weird assembly)
   - [x] Graph
