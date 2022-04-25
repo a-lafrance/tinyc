@@ -18,9 +18,21 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR-based optimizations
   - [x] Copy propagation
   - [x] Common subexpression elimination
+- [ ] DLX backend
+  - [ ] Register allocation
+  - [ ] Codegen
+- [ ] Tons and tons of tests
+  - [ ] Scanner
+  - [x] Parser
+  - [ ] IR generation
+  - [ ] IR optimization (CSE)
+  - [ ] IR formatting
+    - [ ] Text
+    - [ ] Graph
+  - [ ] Register allocation
+  - [ ] Codegen
 
 ### Should Have
-- [ ] DLX backend & codegen
 - [ ] More optimizations
   - [ ] Constant propagation
   - [ ] Dead code elimination
