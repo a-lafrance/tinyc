@@ -24,9 +24,10 @@ Roadmap for goals to accomplish this quarter:
 - [ ] More optimizations
   - [ ] Constant propagation
   - [ ] Dead code elimination
-- [ ] Optimization levels
+- [ ] Config levels
   * Just the general idea of providing a way to opt in or out of certain advanced features
   * Mainly useful for offering a "standard" mode which enables exactly the set of features required for CS 142B, and then other mode(s) for advanced stuff
+  * Likely manifests itself in 2 ways: optimization levels and "strict mode" (which enables extra semantic checks)
 
 ### Nice to Have
 - [ ] ARM/macOS backend & codegen (with or without system `cc` dependency)

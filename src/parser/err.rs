@@ -7,10 +7,11 @@ use crate::{
     sym::UndefinedSymbolError,
     utils::{Keyword, RelOp},
 };
+use super::FuncCallContext;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
-    InvalidChar(InvalidCharError), // still TODO: scanner error propagation
+    InvalidChar(InvalidCharError),
     ExpectedKeyword(Keyword),
     ExpectedIdentifier,
     ExpectedStatement,
@@ -18,6 +19,9 @@ pub enum ParseError {
     ExpectedAssignOp,
     ExpectedRelOp,
     UndefinedSymbol(UndefinedSymbolError),
+    InvalidFuncCall(String, FuncCallContext),
+    DuplicateFuncDecl(String),
+    FuncCallWrongArgs(usize, usize),
 }
 
 impl Display for ParseError {
@@ -31,6 +35,19 @@ impl Display for ParseError {
             ParseError::ExpectedAssignOp => write!(f, "expected '<-'"),
             ParseError::ExpectedRelOp => write!(f, "expected relational operator: one of {}", RelOp::all_as_str()),
             ParseError::UndefinedSymbol(e) => write!(f, "{}", e),
+            ParseError::InvalidFuncCall(func, context) => {
+                let exp_return = match context {
+                    FuncCallContext::Expr => "non-void",
+                    FuncCallContext::Stmt => "void",
+                };
+
+                write!(f, "invalid function call, expected {} return for function '{}'", exp_return, func)
+            },
+            ParseError::DuplicateFuncDecl(func) => write!(f, "invalid redeclaration of function '{}'", func),
+            ParseError::FuncCallWrongArgs(actual, exp) => write!(f,
+                "invalid function call, expected {} arguments but received {}",
+                exp, actual
+            ),
         }
     }
 }
