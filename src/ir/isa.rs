@@ -51,7 +51,7 @@ impl Body {
     }
 
     pub fn make_new_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
-        let bb = BasicBlockData::new_from(self.basic_block_data(parent));
+        let bb = BasicBlockData::new_from(self.basic_block_data(parent), parent);
         self.push_basic_block(bb)
     }
 
@@ -198,23 +198,25 @@ pub struct BasicBlockData {
     val_table: HashMap<String, Value>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
+    parent: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
     pub fn new() -> BasicBlockData {
-        BasicBlockData::with_vals(HashMap::new())
+        BasicBlockData::from(HashMap::new(), None)
     }
 
-    pub fn new_from(bb: &BasicBlockData) -> BasicBlockData {
-        BasicBlockData::with_vals(bb.val_table.clone())
+    pub fn new_from(bb: &BasicBlockData, parent: BasicBlock) -> BasicBlockData {
+        BasicBlockData::from(bb.val_table.clone(), Some(parent))
     }
 
-    fn with_vals(val_table: HashMap<String, Value>) -> BasicBlockData {
+    fn from(val_table: HashMap<String, Value>, parent: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
             val_table,
             fallthrough_dest: None,
             branch_dest: None,
+            parent
         }
     }
 
@@ -252,6 +254,10 @@ impl BasicBlockData {
 
     pub fn set_branch_dest(&mut self, dest: BasicBlock) {
         self.branch_dest = Some(dest);
+    }
+
+    pub fn parent(&self) -> Option<BasicBlock> {
+        self.parent
     }
 }
 
