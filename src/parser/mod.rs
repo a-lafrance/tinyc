@@ -79,7 +79,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
         self.stream.try_consume_matching_keyword(Keyword::Main)?;
 
         let scope_name = Keyword::Main.to_string();
-        self.sym_table.insert_scope(scope_name.clone());
+        self.sym_table.insert_scope(scope_name.clone()).unwrap();
 
         while let Some(Keyword::Var) = self.stream.try_peek_keyword() {
             self.parse_var_decl(&scope_name)?;
@@ -150,7 +150,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
 
         let name = self.stream.try_consume_ident()?;
         self.stream.try_consume_matching_punctuation('(')?;
-        self.sym_table.insert_scope(name.clone());
+        self.sym_table.insert_scope(name.clone())?;
 
         let params = if self.stream.try_consume_matching_punctuation(')').is_ok() {
             vec![]
@@ -1397,7 +1397,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
-        parser.sym_table.insert_scope(func.clone());
+        parser.sym_table.insert_scope(func.clone()).unwrap();
         parser.sym_table.set_func_info(&func, FuncInfo {
             returns_void: false,
             n_params: 2,
@@ -1442,7 +1442,7 @@ mod tests {
             Token::Punctuation(')'),
         ]);
         let mut parser = Parser::new(tokens).unwrap();
-        parser.sym_table.insert_scope("max".to_string());
+        parser.sym_table.insert_scope("max".to_string()).unwrap();
         parser.sym_table.set_func_info("max", FuncInfo {
             returns_void: false,
             n_params: 3,

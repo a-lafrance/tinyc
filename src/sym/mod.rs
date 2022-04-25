@@ -6,7 +6,13 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 use maplit::hashmap;
-use crate::utils::Builtin;
+use crate::{
+    parser::{
+        err::ParseError::*,
+        ParseResult,
+    },
+    utils::Builtin,
+};
 use self::info::{FuncInfo, ScopeInfo};
 
 pub struct SymbolTable {
@@ -41,7 +47,7 @@ impl SymbolTable {
     #[cfg(test)]
     pub fn debug() -> SymbolTable {
         let mut sym_table = SymbolTable::new();
-        sym_table.insert_scope(SymbolTable::DEBUG_SCOPE.to_string());
+        sym_table.insert_scope(SymbolTable::DEBUG_SCOPE.to_string()).unwrap();
 
         sym_table
     }
@@ -60,8 +66,12 @@ impl SymbolTable {
             .unwrap_or(false)
     }
 
-    pub fn insert_scope(&mut self, name: String) {
-        self.scopes.insert(name, ScopeInfo::empty());
+    pub fn insert_scope(&mut self, name: String) -> ParseResult<()> {
+        // FIXME: this is a bit inefficient but idk how to fix
+        match self.scopes.insert(name.clone(), ScopeInfo::empty()) {
+            Some(_) => Err(DuplicateFuncDecl(name)),
+            None => Ok(())
+        }
     }
 
     pub fn func_info(&self, name: &str) -> Option<&FuncInfo> {

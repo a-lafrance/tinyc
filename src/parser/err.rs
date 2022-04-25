@@ -20,6 +20,7 @@ pub enum ParseError {
     ExpectedRelOp,
     UndefinedSymbol(UndefinedSymbolError),
     InvalidFuncCall(String, FuncCallContext),
+    DuplicateFuncDecl(String),
 }
 
 impl Display for ParseError {
@@ -41,6 +42,7 @@ impl Display for ParseError {
 
                 write!(f, "invalid function call, expected {} return for function '{}'", exp_return, func)
             },
+            ParseError::DuplicateFuncDecl(func) => write!(f, "invalid redeclaration of function '{}'", func),
         }
     }
 }
