@@ -36,6 +36,7 @@ impl ConstAllocator {
 
             if let Some(root) = body.root_block() {
                 body.connect_via_fallthrough(prelude_block, root);
+                body.establish_dominance(prelude_block, root);
             }
 
             body.set_root_block(prelude_block);

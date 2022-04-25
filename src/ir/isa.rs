@@ -50,8 +50,10 @@ impl Body {
         self.push_basic_block(BasicBlockData::new())
     }
 
-    pub fn make_new_basic_block_from(&mut self, parent: BasicBlock) -> BasicBlock {
-        let bb = BasicBlockData::new_from(self.basic_block_data(parent));
+    /// Base means basic block whose values should serve as the base for the new one
+    /// Parent means parent in the domination hierarchy
+    pub fn make_new_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
+        let bb = BasicBlockData::new_from(self.basic_block_data(base), parent);
         self.push_basic_block(bb)
     }
 
@@ -72,10 +74,14 @@ impl Body {
         self.basic_block_data_mut(src).set_branch_dest(dest);
         self.push_instr(src, Instruction::Branch(branch_type, dest));
     }
+
+    pub fn establish_dominance(&mut self, parent: BasicBlock, child: BasicBlock) {
+        self.basic_block_data_mut(child).set_parent(parent);
+    }
 }
 
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
     Branch(BranchOpcode, BasicBlock),
     Call(String, Value),
@@ -114,7 +120,7 @@ impl Display for Instruction {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BranchOpcode {
     Br, Beq, Bne, Bgt, Bge, Blt, Ble,
 }
@@ -147,7 +153,7 @@ impl From<RelOp> for BranchOpcode {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StoredBinaryOpcode {
     Add, Sub, Mul, Div, Phi,
 }
@@ -198,23 +204,25 @@ pub struct BasicBlockData {
     val_table: HashMap<String, Value>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
+    parent: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
     pub fn new() -> BasicBlockData {
-        BasicBlockData::with_vals(HashMap::new())
+        BasicBlockData::from(HashMap::new(), None)
     }
 
-    pub fn new_from(bb: &BasicBlockData) -> BasicBlockData {
-        BasicBlockData::with_vals(bb.val_table.clone())
+    pub fn new_from(bb: &BasicBlockData, parent: BasicBlock) -> BasicBlockData {
+        BasicBlockData::from(bb.val_table.clone(), Some(parent))
     }
 
-    fn with_vals(val_table: HashMap<String, Value>) -> BasicBlockData {
+    fn from(val_table: HashMap<String, Value>, parent: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
             val_table,
             fallthrough_dest: None,
             branch_dest: None,
+            parent
         }
     }
 
@@ -253,10 +261,24 @@ impl BasicBlockData {
     pub fn set_branch_dest(&mut self, dest: BasicBlock) {
         self.branch_dest = Some(dest);
     }
+
+    pub fn parent(&self) -> Option<BasicBlock> {
+        self.parent
+    }
+
+    pub fn set_parent(&mut self, parent: BasicBlock) {
+        if self.parent.replace(parent).is_some() {
+            panic!("tried to set basic block parent twice");
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.body.is_empty()
+    }
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Value(pub usize);
 
 impl Display for Value {
