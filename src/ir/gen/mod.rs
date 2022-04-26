@@ -366,7 +366,7 @@ impl AstVisitor for IrBodyGenerator {
 
         for (var, mut phi) in phis.into_iter() {
             match phi {
-                Instruction::StoredBinaryOp { ref mut src2, .. } => *src2 = self.body
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, ref mut src2, .. } => *src2 = self.body
                     .val_in_bb(body_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
