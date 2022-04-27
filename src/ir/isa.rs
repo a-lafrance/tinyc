@@ -27,6 +27,10 @@ impl Body {
         Body { blocks, root }
     }
 
+    pub fn blocks(&self) -> &[BasicBlockData] {
+        &self.blocks
+    }
+
     pub fn root_block(&self) -> Option<BasicBlock> {
         self.root
     }
@@ -317,10 +321,10 @@ impl BasicBlockData {
         self.body.is_empty()
     }
 
-    pub fn phis(&self) -> impl Iterator<Item = (Value, Value)> + '_ {
+    pub fn phis(&self) -> impl Iterator<Item = (Value, Value, Value)> + '_ {
         self.body().iter().filter_map(|instr|
             match instr {
-                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1, src2, .. } => Some((*src1, *src2)),
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1, src2, dest } => Some((*src1, *src2, *dest)),
                 _ => None,
             }
         )
