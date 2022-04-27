@@ -2,25 +2,86 @@ use std::collections::{HashMap, HashSet};
 use crate::ir::isa::{BasicBlock, BasicBlockData, Body, ControlFlowKind, Value};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct InterferenceGraph(HashMap<Value, HashSet<Value>>);
+pub struct InterferenceGraph {
+    // implement clusters by repurposing one of their nodes as the "root" node.
+    // just remove the other nodes and edges from the graph and instead add them to the cluster.
+    // then store a directory of clusters to know which nodes are and aren't supernodes for a cluster.
+    clusters: HashMap<Value, Vec<Value>>,
+    edges: HashMap<Value, HashSet<Value>>,
+}
 
 impl InterferenceGraph {
+    fn has_edge(&self, v1: Value, v2: Value) -> bool {
+        self.edges.get(&v1).map(|e| e.contains(&v2)).unwrap_or(false)
+    }
+
+    fn add_edge(&mut self, v1: Value, v2: Value) {
+        let v1_edges = self.edges.entry(v1).or_insert_with(HashSet::new);
+        v1_edges.insert(v2);
+
+        let v2_edges = self.edges.entry(v2).or_insert_with(HashSet::new);
+        v2_edges.insert(v1);
+    }
+
+    fn remove_edge(&mut self, v1: Value, v2: Value) {
+        if let Some(edges) = self.edges.get_mut(&v1) {
+            edges.remove(&v2);
+        }
+
+        if let Some(edges) = self.edges.get_mut(&v2) {
+            edges.remove(&v1);
+        }
+    }
+
+    fn coalesce_live_ranges(&mut self, body: &Body) {
+        for bb in body.blocks() {
+            for (lhs, rhs, result) in bb.phis() {
+                let mut cluster = Vec::with_capacity(3);
+                cluster.push(result);
+
+                if !self.has_edge(lhs, rhs) {
+                    if !self.has_edge(lhs, result) {
+                        cluster.push(lhs);
+
+                        if let Some(edges) = self.edges.remove(&lhs) {
+                            for node in edges.into_iter() {
+                                self.remove_edge(lhs, node);
+                                self.add_edge(result, node);
+                            }
+                        }
+                    }
+
+                    if !self.has_edge(rhs, result) {
+                        cluster.push(rhs);
+
+                        if let Some(edges) = self.edges.remove(&rhs) {
+                            for node in edges.into_iter() {
+                                self.remove_edge(rhs, node);
+                                self.add_edge(result, node);
+                            }
+                        }
+                    }
+                }
+
+                if cluster.len() > 1 {
+                    self.clusters.insert(result, cluster);
+                }
+            }
+        }
+    }
+
     fn construct_from_basic_block(&mut self, bb: &BasicBlockData, live_set: &mut HashSet<Value>) {
         // for each instr from last to first
         for instr in bb.body().iter().rev() {
             // remove dest value from live set if exists
             if let Some(result_val) = instr.result_val() {
                 live_set.remove(&result_val);
-                self.0.entry(result_val).or_insert_with(HashSet::new);
+                self.edges.entry(result_val).or_insert_with(HashSet::new);
 
                 // add interferences to graph
                 for val in live_set.iter().copied() {
                     // all operands in live set interfere with dest value
-                    let result_edges = self.0.get_mut(&result_val).unwrap();
-                    result_edges.insert(val);
-
-                    let val_edges = self.0.entry(val).or_default();
-                    val_edges.insert(result_val);
+                    self.add_edge(val, result_val);
                 }
             }
 
@@ -65,7 +126,7 @@ impl InterferenceGraph {
         let mut then_live_set = live_set.clone();
         let else_live_set = live_set;
 
-        for (then_val, else_val) in body.basic_block_data(join_bb).phis() {
+        for (then_val, else_val, _) in body.basic_block_data(join_bb).phis() {
             then_live_set.remove(&else_val);
             else_live_set.remove(&then_val);
         }
@@ -104,7 +165,7 @@ impl InterferenceGraph {
             // remove left side of phis
         let mut body_live_set = live_set.clone();
 
-        for (prev_val, _) in header_bb_data.phis() {
+        for (prev_val, _, _) in header_bb_data.phis() {
             body_live_set.remove(&prev_val);
         }
 
@@ -129,7 +190,7 @@ impl InterferenceGraph {
 
         // config live set for prev bb
             // remove right side of phis
-        for (_, body_val) in header_bb_data.phis() {
+        for (_, body_val, _) in header_bb_data.phis() {
             live_set.remove(&body_val);
         }
 
@@ -147,6 +208,7 @@ impl From<&Body> for InterferenceGraph {
             ig.visit_basic_block(body, root, &mut live_set, None);
         }
 
+        ig.coalesce_live_ranges(body);
         ig
     }
 }
@@ -192,11 +254,14 @@ mod tests {
         );
 
         let ig = InterferenceGraph::from(&body);
-        assert_eq!(ig, InterferenceGraph(hashmap! {
-            Value(0) => hashset! { Value(1) },
-            Value(1) => hashset! { Value(0) },
-            Value(2) => HashSet::new(),
-        }));
+        assert_eq!(ig, InterferenceGraph {
+            clusters: hashmap!{},
+            edges: hashmap!{
+                Value(0) => hashset!{ Value(1) },
+                Value(1) => hashset!{ Value(0) },
+                Value(2) => HashSet::new(),
+            },
+        });
     }
 
     #[test]
@@ -233,11 +298,14 @@ mod tests {
         );
 
         let ig = InterferenceGraph::from(&body);
-        assert_eq!(ig, InterferenceGraph(hashmap! {
-            Value(0) => hashset! { Value(1) },
-            Value(1) => hashset! { Value(0) },
-            Value(2) => HashSet::new(),
-        }));
+        assert_eq!(ig, InterferenceGraph {
+            clusters: hashmap!{},
+            edges: hashmap!{
+                Value(0) => hashset!{ Value(1) },
+                Value(1) => hashset!{ Value(0) },
+                Value(2) => HashSet::new(),
+            },
+        });
     }
 
     #[test]
@@ -315,11 +383,14 @@ mod tests {
         );
 
         let ig = InterferenceGraph::from(&body);
-        assert_eq!(ig, InterferenceGraph(hashmap! {
-            Value(0) => hashset! { Value(1) },
-            Value(1) => hashset! { Value(0) },
-            Value(2) => HashSet::new(),
-        }));
+        assert_eq!(ig, InterferenceGraph {
+            clusters: hashmap!{},
+            edges: hashmap! {
+                Value(0) => hashset! { Value(1) },
+                Value(1) => hashset! { Value(0) },
+                Value(2) => HashSet::new(),
+            },
+        });
     }
 
     #[test]
@@ -401,12 +472,15 @@ mod tests {
         );
 
         let ig = InterferenceGraph::from(&body);
-        assert_eq!(ig, InterferenceGraph(hashmap! {
-            Value(0) => hashset! { Value(1), Value(2) },
-            Value(1) => hashset! { Value(0), Value(2), Value(4) },
-            Value(2) => hashset! { Value(0), Value(1), Value(3), Value(4) },
-            Value(3) => hashset! { Value(2) },
-            Value(4) => hashset! { Value(1), Value(2) },
-        }));
+        assert_eq!(ig, InterferenceGraph {
+            clusters: hashmap! {
+                Value(4) => vec![Value(4), Value(0), Value(3)]
+            },
+            edges: hashmap! {
+                Value(1) => hashset! { Value(2), Value(4) },
+                Value(2) => hashset! { Value(1), Value(4) },
+                Value(4) => hashset! { Value(1), Value(2) },
+            }
+        });
     }
 }
