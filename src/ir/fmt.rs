@@ -99,7 +99,7 @@ impl<W: Write> IrWriter for TextWriter<W> {
     }
 
     fn write_epilogue(&mut self) -> FmtResult {
-        Ok(())
+        writeln!(self.0)
     }
 
     fn write_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) -> FmtResult {

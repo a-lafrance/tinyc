@@ -93,15 +93,14 @@ impl Body {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
     Branch(BranchOpcode, BasicBlock),
-    Call(String, Value),
+    Call(String),
     Const(u32, Value),
     Cmp(Value, Value),
     End,
+    Mu(Value, CCLocation),
     Nop,
-    Pop(Value),
-    Push(Value),
     Read(Value),
-    Return(Option<Value>),
+    Return,
     StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
     Write(Value),
     Writeln,
@@ -110,11 +109,10 @@ pub enum Instruction {
 impl Instruction {
     pub fn result_val(&self) -> Option<Value> {
         match self {
-            Instruction::Call(_, dest) => Some(*dest),
             Instruction::Const(_, dest) => Some(*dest),
-            Instruction::Pop(dest) => Some(*dest),
             Instruction::Read(dest) => Some(*dest),
             Instruction::StoredBinaryOp { dest, .. } => Some(*dest),
+            Instruction::Mu(val, _) => Some(*val),
             _ => None,
         }
     }
@@ -124,10 +122,9 @@ impl Instruction {
     pub fn operands(&self) -> Vec<Value> {
         match self {
             Instruction::Cmp(lhs, rhs) => vec![*lhs, *rhs],
-            Instruction::Push(src) => vec![*src],
-            Instruction::Return(Some(val)) => vec![*val],
             Instruction::StoredBinaryOp { src1, src2, .. } => vec![*src1, *src2],
             Instruction::Write(src) => vec![*src],
+            Instruction::Mu(val, _) => vec![*val],
             _ => vec![],
         }
     }
@@ -136,20 +133,18 @@ impl Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Instruction::Call(func, dest) => write!(f, "{} = call {}", dest, func),
+            Instruction::Call(func) => write!(f, "call {}", func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
             Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
-            Instruction::Pop(dest) => write!(f, "{} = pop", dest),
-            Instruction::Push(src) => write!(f, "push {}", src),
             Instruction::Read(dest) => write!(f, "{} = read", dest),
-            Instruction::Return(Some(ret_val)) => write!(f, "ret {}", ret_val),
-            Instruction::Return(None) => write!(f, "ret"),
+            Instruction::Return => write!(f, "ret"),
             Instruction::Write(src) => write!(f, "write {}", src),
             Instruction::Writeln => write!(f, "writeln"),
             Instruction::End => write!(f, "end"),
             Instruction::Nop => write!(f, "nop"),
+            Instruction::Mu(val, loc) => write!(f, "mu {}, {}", val, loc),
         }
     }
 }
@@ -389,5 +384,24 @@ impl<'a> Iterator for ValueIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
+    }
+}
+
+
+/// Represents a "calling convention location", a special storage location whose exact value is
+/// dictated by architecture-specific calling conventions. This provides an architecture-agnostic
+/// way to bind values to locations with mu instructions
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CCLocation {
+    Arg(usize),
+    RetVal,
+}
+
+impl Display for CCLocation {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            CCLocation::Arg(n) => write!(f, "[ArgLoc{}]", n),
+            CCLocation::RetVal => write!(f, "[RetValLoc]"),
+        }
     }
 }
