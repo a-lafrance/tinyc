@@ -329,12 +329,10 @@ impl BasicBlockData {
         if let Some(ft_dest) = self.fallthrough_dest() {
             if let Some(br_dest) = self.branch_dest() {
                 ControlFlowKind::IfStmt(ft_dest, br_dest)
+            } else if let Some(loop_body) = body.basic_block_data(ft_dest).loop_body(ft_dest, body) {
+                ControlFlowKind::Loop(ft_dest, loop_body)
             } else {
-                if let Some(loop_body) = body.basic_block_data(ft_dest).loop_body(ft_dest, body) {
-                    ControlFlowKind::Loop(ft_dest, loop_body)
-                } else {
-                    ControlFlowKind::FallthroughOnly(ft_dest)
-                }
+                ControlFlowKind::FallthroughOnly(ft_dest)
             }
         } else if let Some(br_dest) = self.branch_dest() {
             ControlFlowKind::UnconditionalBranch(br_dest)
