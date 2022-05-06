@@ -22,6 +22,15 @@ impl Body {
         }
     }
 
+    #[cfg(test)]
+    pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
+        Body { blocks, root }
+    }
+
+    pub fn blocks(&self) -> &[BasicBlockData] {
+        &self.blocks
+    }
+
     pub fn root_block(&self) -> Option<BasicBlock> {
         self.root
     }
@@ -76,7 +85,7 @@ impl Body {
     }
 
     pub fn establish_dominance(&mut self, parent: BasicBlock, child: BasicBlock) {
-        self.basic_block_data_mut(child).set_parent(parent);
+        self.basic_block_data_mut(child).set_dominator(parent);
     }
 }
 
@@ -84,37 +93,58 @@ impl Body {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
     Branch(BranchOpcode, BasicBlock),
-    Call(String, Value),
+    Call(String),
     Const(u32, Value),
     Cmp(Value, Value),
     End,
+    Mu(Value, CCLocation),
     Nop,
-    Pop(Value),
-    Push(Value),
     Read(Value),
-    Return(Option<Value>),
+    Return,
     StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
     Write(Value),
     Writeln,
 }
 
+impl Instruction {
+    pub fn result_val(&self) -> Option<Value> {
+        match self {
+            Instruction::Const(_, dest) => Some(*dest),
+            Instruction::Read(dest) => Some(*dest),
+            Instruction::StoredBinaryOp { dest, .. } => Some(*dest),
+            Instruction::Mu(val, _) => Some(*val),
+            _ => None,
+        }
+    }
+
+    // We could do some iterator magic here, but that would require an extra allocation anyway
+    // because the iterator types are heterogeneous, so it's just easier to return a vector
+    pub fn operands(&self) -> Vec<Value> {
+        match self {
+            Instruction::Cmp(lhs, rhs) => vec![*lhs, *rhs],
+            Instruction::StoredBinaryOp { src1, src2, .. } => vec![*src1, *src2],
+            Instruction::Write(src) => vec![*src],
+            Instruction::Mu(val, _) => vec![*val],
+            _ => vec![],
+        }
+    }
+}
+
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Instruction::Call(func, dest) => write!(f, "{} = call {}", dest, func),
+            Instruction::Call(func) => write!(f, "call {}", func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
             Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
             Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
-            Instruction::Pop(dest) => write!(f, "{} = pop", dest),
-            Instruction::Push(src) => write!(f, "push {}", src),
             Instruction::Read(dest) => write!(f, "{} = read", dest),
-            Instruction::Return(Some(ret_val)) => write!(f, "ret {}", ret_val),
-            Instruction::Return(None) => write!(f, "ret"),
+            Instruction::Return => write!(f, "ret"),
             Instruction::Write(src) => write!(f, "write {}", src),
             Instruction::Writeln => write!(f, "writeln"),
             Instruction::End => write!(f, "end"),
             Instruction::Nop => write!(f, "nop"),
+            Instruction::Mu(val, loc) => write!(f, "mu {}, {}", val, loc),
         }
     }
 }
@@ -204,7 +234,7 @@ pub struct BasicBlockData {
     val_table: HashMap<String, Value>,
     fallthrough_dest: Option<BasicBlock>,
     branch_dest: Option<BasicBlock>,
-    parent: Option<BasicBlock>,
+    dominator: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
@@ -212,17 +242,27 @@ impl BasicBlockData {
         BasicBlockData::from(HashMap::new(), None)
     }
 
-    pub fn new_from(bb: &BasicBlockData, parent: BasicBlock) -> BasicBlockData {
-        BasicBlockData::from(bb.val_table.clone(), Some(parent))
+    pub fn new_from(bb: &BasicBlockData, dominator: BasicBlock) -> BasicBlockData {
+        BasicBlockData::from(bb.val_table.clone(), Some(dominator))
     }
 
-    fn from(val_table: HashMap<String, Value>, parent: Option<BasicBlock>) -> BasicBlockData {
+    #[cfg(test)]
+    pub fn with(
+        body: Vec<Instruction>,
+        fallthrough_dest: Option<BasicBlock>,
+        branch_dest: Option<BasicBlock>,
+        dominator: Option<BasicBlock>
+    ) -> BasicBlockData {
+        BasicBlockData { body, fallthrough_dest, branch_dest, dominator, val_table: HashMap::new() }
+    }
+
+    fn from(val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
             val_table,
             fallthrough_dest: None,
             branch_dest: None,
-            parent
+            dominator
         }
     }
 
@@ -262,19 +302,67 @@ impl BasicBlockData {
         self.branch_dest = Some(dest);
     }
 
-    pub fn parent(&self) -> Option<BasicBlock> {
-        self.parent
+    pub fn dominator(&self) -> Option<BasicBlock> {
+        self.dominator
     }
 
-    pub fn set_parent(&mut self, parent: BasicBlock) {
-        if self.parent.replace(parent).is_some() {
-            panic!("tried to set basic block parent twice");
+    pub fn set_dominator(&mut self, dominator: BasicBlock) {
+        if self.dominator.replace(dominator).is_some() {
+            panic!("tried to set basic block dominator twice");
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self.body.is_empty()
     }
+
+    pub fn phis(&self) -> impl Iterator<Item = (Value, Value, Value)> + '_ {
+        self.body().iter().filter_map(|instr|
+            match instr {
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1, src2, dest } => Some((*src1, *src2, *dest)),
+                _ => None,
+            }
+        )
+    }
+
+    pub fn control_flow_kind(&self, body: &Body) -> ControlFlowKind {
+        if let Some(ft_dest) = self.fallthrough_dest() {
+            if let Some(br_dest) = self.branch_dest() {
+                ControlFlowKind::IfStmt(ft_dest, br_dest)
+            } else if let Some(loop_body) = body.basic_block_data(ft_dest).loop_body(ft_dest, body) {
+                ControlFlowKind::Loop(ft_dest, loop_body)
+            } else {
+                ControlFlowKind::FallthroughOnly(ft_dest)
+            }
+        } else if let Some(br_dest) = self.branch_dest() {
+            ControlFlowKind::UnconditionalBranch(br_dest)
+        } else {
+            ControlFlowKind::Leaf
+        }
+    }
+
+    fn loop_body(&self, self_bb: BasicBlock, body: &Body) -> Option<BasicBlock> {
+        // if this block's ft dest is UnconditionalBranch with dest = self, then yes
+        let ft_dest = self.fallthrough_dest()?;
+        let ft_bb_data = body.basic_block_data(ft_dest);
+
+        let ft_br_dest = ft_bb_data.branch_dest()?;
+
+        if ft_bb_data.fallthrough_dest().is_none() && ft_br_dest == self_bb {
+            Some(ft_dest)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlFlowKind {
+    Leaf,
+    FallthroughOnly(BasicBlock),
+    UnconditionalBranch(BasicBlock),
+    IfStmt(BasicBlock, BasicBlock),
+    Loop(BasicBlock, BasicBlock),
 }
 
 
@@ -294,5 +382,24 @@ impl<'a> Iterator for ValueIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
+    }
+}
+
+
+/// Represents a "calling convention location", a special storage location whose exact value is
+/// dictated by architecture-specific calling conventions. This provides an architecture-agnostic
+/// way to bind values to locations with mu instructions
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CCLocation {
+    Arg(usize),
+    RetVal,
+}
+
+impl Display for CCLocation {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            CCLocation::Arg(n) => write!(f, "[ArgLoc{}]", n),
+            CCLocation::RetVal => write!(f, "[RetValLoc]"),
+        }
     }
 }

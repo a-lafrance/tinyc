@@ -26,7 +26,7 @@ impl CseCache {
             }
 
             // else, repeat with parent until you find or no parent left
-            current_bb = body.basic_block_data(bb).parent();
+            current_bb = body.basic_block_data(bb).dominator();
         }
 
         None

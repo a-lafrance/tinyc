@@ -13,7 +13,7 @@ use self::{
     utils::{ConstAllocator, PhiDetectionPass},
 };
 use super::{
-    isa::{BasicBlock, Body, BranchOpcode, Instruction, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, Body, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value},
     IrStore,
 };
 
@@ -242,26 +242,31 @@ impl AstVisitor for IrBodyGenerator {
                 let block = self.current_block.expect("invariant violated: must be in block");
                 let index_instr = IndexableInstr::Call(call.name.clone());
 
-                let (dest_val, instr) = match self.cse_cache.get_common_subexpr(&self.body, block, &index_instr) {
-                    Some(val) => (val, None),
+                let dest_val = match self.cse_cache.get_common_subexpr(&self.body, block, &index_instr) {
+                    Some(val) => val,
                     None => {
-                        for arg in call.args.iter() {
+                        for (i, arg) in call.args.iter().enumerate() {
                             self.visit_expr(arg);
                             self.body.push_instr(
                                 block,
-                                Instruction::Push(self.last_val.expect("invariant violated: arg must have val")),
+                                Instruction::Mu(
+                                    self.last_val.expect("invariant violated: arg must have val"),
+                                    CCLocation::Arg(i),
+                                ),
                             );
                         }
 
                         let dest_val = self.alloc_val();
+                        self.body.push_instr(block, Instruction::Call(call.name.clone()));
+                        self.body.push_instr(block, Instruction::Mu(dest_val, CCLocation::RetVal));
                         self.cse_cache.insert_instr(block, index_instr, dest_val);
 
-                        (dest_val, Some(Instruction::Call(call.name.clone(), dest_val)))
+                        dest_val
                     }
                 };
 
                 self.last_val = Some(dest_val);
-                instr
+                None
             },
         };
 
@@ -277,10 +282,10 @@ impl AstVisitor for IrBodyGenerator {
         let root = self.fill_basic_block();
         self.body.set_root_block(root);
 
-        for param in decl.params.iter().cloned() {
+        for (i, param) in decl.params.iter().cloned().enumerate() {
             let param_val = self.alloc_val();
             self.body.assign_in_bb(root, param, param_val);
-            self.body.push_instr(root, Instruction::Pop(param_val));
+            self.body.push_instr(root, Instruction::Mu(param_val, CCLocation::Arg(i)));
         }
 
         visit::walk_func_decl(self, decl);
@@ -366,7 +371,7 @@ impl AstVisitor for IrBodyGenerator {
 
         for (var, mut phi) in phis.into_iter() {
             match phi {
-                Instruction::StoredBinaryOp { ref mut src2, .. } => *src2 = self.body
+                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, ref mut src2, .. } => *src2 = self.body
                     .val_in_bb(body_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
@@ -395,11 +400,13 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_return(&mut self, ret: &Return) {
         visit::walk_return(self, ret);
+        let block = self.current_block.expect("invariant violated: return must be in block");
 
-        self.body.push_instr(
-            self.current_block.expect("invariant violated: return must be in block"),
-            Instruction::Return(self.last_val),
-        );
+        if let Some(ret_val) = self.last_val {
+            self.body.push_instr(block, Instruction::Mu(ret_val, CCLocation::RetVal));
+        }
+
+        self.body.push_instr(block, Instruction::Return);
     }
 
     fn visit_term(&mut self, term: &Term) {
