@@ -51,6 +51,10 @@ impl Body {
         &mut self.blocks[bb.0]
     }
 
+    pub fn root_block_data(&self) -> Option<(BasicBlock, &BasicBlockData)> {
+        self.root.map(|r| (r, self.basic_block_data(r)))
+    }
+
     pub fn val_in_bb(&self, bb: BasicBlock, var: &str) -> Option<Value> {
         self.basic_block_data(bb).get_val(var)
     }

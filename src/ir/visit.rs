@@ -1,6 +1,7 @@
-use super::isa::{BasicBlock, BasicBlockData, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value};
+use super::isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value};
 
 pub trait IrVisitor: Sized {
+    fn visit_body(&mut self, body: &Body) { }
     fn visit_basic_block(&mut self, _bb: BasicBlock, bb_data: &BasicBlockData) {
         walk_basic_block(self, bb_data);
     }

@@ -4,7 +4,7 @@ pub mod isa;
 pub mod visit;
 
 use std::collections::HashMap;
-use crate::ast::Computation;
+use crate::{ast::Computation, utils::Keyword};
 use self::{
     gen::IrGenerator,
     isa::Body,
@@ -18,6 +18,11 @@ pub struct IrStore {
 impl IrStore {
     pub fn new() -> IrStore {
         IrStore { bodies: HashMap::new() }
+    }
+
+    // NOTE: this is TEMPORARY
+    pub fn main_body(&mut self) -> Option<Body> {
+        self.bodies.remove(&Keyword::Main.to_string())
     }
 
     pub fn bodies(&self) -> &HashMap<String, Body> {
