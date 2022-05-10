@@ -178,9 +178,9 @@ mod tests {
         let input = "
             main
             var a, b; {
-                let a <- 1 * 2 + 3;
+                let a<-1*2+3;
 
-                if a > 0
+                if a>0
                 then
                     let b <- a * 2;
                 else
