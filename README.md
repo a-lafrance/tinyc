@@ -19,7 +19,7 @@ Roadmap for goals to accomplish this quarter:
   - [x] Common subexpression elimination
 - [ ] DLX backend
   - [ ] Register allocation
-  - [ ] Codegen
+  - [x] Codegen
 - [ ] Tons and tons of tests
   - [ ] Scanner
   - [x] Parser
