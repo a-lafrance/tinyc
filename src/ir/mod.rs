@@ -24,10 +24,6 @@ impl IrStore {
         &self.bodies
     }
 
-    pub fn bodies_mut(&mut self) -> &mut HashMap<String, Body> {
-        &mut self.bodies
-    }
-
     pub fn register(&mut self, name: String, body: Body) {
         self.bodies.insert(name, body);
     }

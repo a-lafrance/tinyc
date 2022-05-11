@@ -156,6 +156,7 @@ impl IrBodyGenerator {
         phis
     }
 
+    // MARK: this is where const prop is centered
     fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<u32> {
         let c1 = self.const_alloc.const_for_val(v1)?;
         let c2 = self.const_alloc.const_for_val(v2)?;
@@ -166,20 +167,6 @@ impl IrBodyGenerator {
             StoredBinaryOpcode::Mul => Some(c1 * c2),
             StoredBinaryOpcode::Div => Some(c1 / c2),
             StoredBinaryOpcode::Phi => None,
-        }
-    }
-
-    // MARK: this is where const prop is centered
-    fn const_compute_or_emit_instr(
-        &mut self,
-        opcode: StoredBinaryOpcode,
-        lhs: Value,
-        rhs: Value,
-        fallback: impl FnOnce() -> Value
-    ) {
-        match self.try_const_compute(opcode, lhs, rhs) {
-            Some(result) => self.load_const(result),
-            None => self.last_val = Some(fallback()),
         }
     }
 }
