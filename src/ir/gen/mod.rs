@@ -80,7 +80,7 @@ impl IrBodyGenerator {
     fn new() -> IrBodyGenerator {
         IrBodyGenerator {
             body: Body::new(),
-            const_alloc: ConstAllocator::new(),
+            const_alloc: ConstAllocator::default(),
             last_val: None,
             next_val: Value(0),
             current_block: None,
@@ -100,7 +100,7 @@ impl IrBodyGenerator {
     }
 
     fn load_const(&mut self, n: u32) {
-        self.last_val = Some(self.const_alloc.get(n).unwrap_or_else(|| {
+        self.last_val = Some(self.const_alloc.val_for_const(n).unwrap_or_else(|| {
             let val = self.alloc_val();
             self.const_alloc.alloc(n, val);
 
@@ -155,6 +155,32 @@ impl IrBodyGenerator {
 
         phis
     }
+
+    fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<u32> {
+        let c1 = self.const_alloc.const_for_val(v1)?;
+        let c2 = self.const_alloc.const_for_val(v2)?;
+
+        match op {
+            StoredBinaryOpcode::Add => Some(c1 + c2),
+            StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
+            StoredBinaryOpcode::Mul => Some(c1 * c2),
+            StoredBinaryOpcode::Div => Some(c1 / c2),
+            StoredBinaryOpcode::Phi => None,
+        }
+    }
+
+    fn const_compute_or_emit_instr(
+        &mut self,
+        opcode: StoredBinaryOpcode,
+        lhs: Value,
+        rhs: Value,
+        fallback: impl FnOnce() -> Value
+    ) {
+        match self.try_const_compute(opcode, lhs, rhs) {
+            Some(result) => self.load_const(result),
+            None => self.last_val = Some(fallback()),
+        }
+    }
 }
 
 impl AstVisitor for IrBodyGenerator {
@@ -194,25 +220,31 @@ impl AstVisitor for IrBodyGenerator {
             let lhs = self.last_val.expect("invariant violated: expected expr");
             self.visit_term(term);
             let rhs = self.last_val.expect("invariant violated: expected expr");
+            let opcode = StoredBinaryOpcode::from(*op);
 
-            let block = self.current_block.expect("invariant violated: expr must be in block");
-            let index_instr = IndexableInstr::from_term_op(*op, lhs, rhs);
+            match self.try_const_compute(opcode, lhs, rhs) {
+                Some(result) => self.load_const(result),
+                None => {
+                    let block = self.current_block.expect("invariant violated: expr must be in block");
+                    let index_instr = IndexableInstr::from_term_op(*op, lhs, rhs);
 
-            self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
-                .or_else(|| {
-                    let result = self.alloc_val();
-                    let instr = Instruction::StoredBinaryOp {
-                        opcode: StoredBinaryOpcode::from(*op),
-                        src1: lhs,
-                        src2: rhs,
-                        dest: result,
-                    };
+                    self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                        .or_else(|| {
+                            let result = self.alloc_val();
+                            let instr = Instruction::StoredBinaryOp {
+                                opcode,
+                                src1: lhs,
+                                src2: rhs,
+                                dest: result,
+                            };
 
-                    self.cse_cache.insert_instr(block, index_instr, result);
-                    self.body.push_instr(block, instr);
+                            self.cse_cache.insert_instr(block, index_instr, result);
+                            self.body.push_instr(block, instr);
 
-                    Some(result)
-                });
+                            Some(result)
+                        });
+                },
+            }
         }
     }
 
@@ -416,25 +448,31 @@ impl AstVisitor for IrBodyGenerator {
             let lhs = self.last_val.expect("invariant violated: expected expr");
             self.visit_factor(factor);
             let rhs = self.last_val.expect("invariant violated: expected expr");
+            let opcode = StoredBinaryOpcode::from(*op);
 
-            let block = self.current_block.expect("invariant violated: term must be in block");
-            let index_instr = IndexableInstr::from_factor_op(*op, lhs, rhs);
+            match self.try_const_compute(opcode, lhs, rhs) {
+                Some(result) => self.load_const(result),
+                None => {
+                    let block = self.current_block.expect("invariant violated: term must be in block");
+                    let index_instr = IndexableInstr::from_factor_op(*op, lhs, rhs);
 
-            self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
-                .or_else(|| {
-                    let result = self.alloc_val();
-                    let instr = Instruction::StoredBinaryOp {
-                        opcode: StoredBinaryOpcode::from(*op),
-                        src1: lhs,
-                        src2: rhs,
-                        dest: result,
-                    };
+                    self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                        .or_else(|| {
+                            let result = self.alloc_val();
+                            let instr = Instruction::StoredBinaryOp {
+                                opcode,
+                                src1: lhs,
+                                src2: rhs,
+                                dest: result,
+                            };
 
-                    self.cse_cache.insert_instr(block, index_instr, result);
-                    self.body.push_instr(block, instr);
+                            self.cse_cache.insert_instr(block, index_instr, result);
+                            self.body.push_instr(block, instr);
 
-                    Some(result)
-                });
+                            Some(result)
+                        });
+                }
+            }
         }
     }
 }
