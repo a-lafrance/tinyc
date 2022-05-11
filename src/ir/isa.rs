@@ -348,24 +348,24 @@ impl BasicBlockData {
         )
     }
 
-    pub fn control_flow_kind(&self, body: &Body) -> ControlFlowKind {
+    pub fn control_flow_kind(&self, body: &Body) -> ControlFlowEdge {
         if let Some(ft_dest) = self.fallthrough_dest() {
             if let Some(br_dest) = self.branch_dest() {
-                ControlFlowKind::IfStmt(ft_dest, br_dest)
+                ControlFlowEdge::IfStmt(ft_dest, br_dest)
             } else if let Some(loop_body) = body.basic_block_data(ft_dest).loop_body(ft_dest, body) {
-                ControlFlowKind::Loop(ft_dest, loop_body)
+                ControlFlowEdge::Loop(ft_dest, loop_body)
             } else {
-                ControlFlowKind::FallthroughOnly(ft_dest)
+                ControlFlowEdge::Fallthrough(ft_dest)
             }
         } else if let Some(br_dest) = self.branch_dest() {
-            ControlFlowKind::UnconditionalBranch(br_dest)
+            ControlFlowEdge::Branch(br_dest)
         } else {
-            ControlFlowKind::Leaf
+            ControlFlowEdge::Leaf
         }
     }
 
     fn loop_body(&self, self_bb: BasicBlock, body: &Body) -> Option<BasicBlock> {
-        // if this block's ft dest is UnconditionalBranch with dest = self, then yes
+        // if this block's ft dest is Branch with dest = self, then yes
         let ft_dest = self.fallthrough_dest()?;
         let ft_bb_data = body.basic_block_data(ft_dest);
 
@@ -380,10 +380,10 @@ impl BasicBlockData {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ControlFlowKind {
+pub enum ControlFlowEdge {
     Leaf,
-    FallthroughOnly(BasicBlock),
-    UnconditionalBranch(BasicBlock),
+    Fallthrough(BasicBlock),
+    Branch(BasicBlock),
     IfStmt(BasicBlock, BasicBlock),
     Loop(BasicBlock, BasicBlock),
 }

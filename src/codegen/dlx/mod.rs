@@ -117,6 +117,20 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, dest: BasicBlock) {
+        // rn there's a bug where code is generated out-of-order because the cfg isn't being walked correctly.
+        // this is problematic, but here's the solution:
+            // rather than naively encoding control flow edges with separate ft/branch edges, encode them
+            //   directly w/ ControlFlowEdge (rename to ControlFlowEdge)
+            // what i mean is, every basic block should have one non-optional ControlFlowEdge, which stores exactly
+            //   the configuration of control flow for that basic block. eg for unconditional branch/fallthrough it just
+            //   says that, but for if statements if has (then start bb, else start bb, join bb) and similar for loops
+            // this is good because it gives you more info when walking the cfg, so you can walk it in the right order
+            // then to solve the issue with codegen and walking the cfg, walk the graph differently based on each cfe
+                // for unconditional ft/br, no restrictions necessary
+                // for if stmts, need to implement a "stop at" mechanism to cut off the traversal at the join bb
+                    // ONLY FOR FT PATH, NOT BRANCH PATH
+                // for loops, probably something similar (need to think about this more)
+            // it's useful to extend this to ir formatting too since it suffers from the same problem (txt specifically)
         let comparator = match opcode {
             BranchOpcode::Br => Register::R0,
             _ => Register::RCMP,

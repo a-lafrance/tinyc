@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use crate::ir::isa::{BasicBlock, BasicBlockData, Body, ControlFlowKind, Value};
+use crate::ir::isa::{BasicBlock, BasicBlockData, Body, ControlFlowEdge, Value};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InterferenceGraph {
@@ -100,13 +100,13 @@ impl InterferenceGraph {
         let bb_data = body.basic_block_data(bb);
 
         match bb_data.control_flow_kind(body) {
-            ControlFlowKind::Leaf => self.construct_from_basic_block(bb_data, live_set),
-            ControlFlowKind::FallthroughOnly(dest) | ControlFlowKind::UnconditionalBranch(dest) => {
+            ControlFlowEdge::Leaf => self.construct_from_basic_block(bb_data, live_set),
+            ControlFlowEdge::Fallthrough(dest) | ControlFlowEdge::Branch(dest) => {
                 self.visit_basic_block(body, dest, live_set, target);
                 self.construct_from_basic_block(bb_data, live_set);
             },
-            ControlFlowKind::IfStmt(then_bb, else_bb) => self.visit_if_stmt(body, bb_data, then_bb, else_bb, live_set, target),
-            ControlFlowKind::Loop(header_bb, body_bb) => self.visit_loop(body, bb_data, header_bb, body_bb, live_set, target),
+            ControlFlowEdge::IfStmt(then_bb, else_bb) => self.visit_if_stmt(body, bb_data, then_bb, else_bb, live_set, target),
+            ControlFlowEdge::Loop(header_bb, body_bb) => self.visit_loop(body, bb_data, header_bb, body_bb, live_set, target),
         }
     }
 
