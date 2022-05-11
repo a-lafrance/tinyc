@@ -108,10 +108,21 @@ impl IrBodyGenerator {
         }));
     }
 
-    fn fill_basic_block(&mut self, edge: ControlFlowEdge) -> BasicBlock {
-        let bb = self.body.make_new_basic_block(edge);
-        self.current_block = Some(bb);
+    fn make_basic_block(&mut self) -> BasicBlock {
+        let bb = self.body.make_new_basic_block(ControlFlowEdge::Leaf);
         self.cse_cache.insert_block(bb);
+        bb
+    }
+
+    fn make_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
+        let bb = self.body.make_new_basic_block_from(base, parent, ControlFlowEdge::Leaf);
+        self.cse_cache.insert_block(bb);
+        bb
+    }
+
+    fn fill_basic_block(&mut self) -> BasicBlock {
+        let bb = self.make_basic_block();
+        self.current_block = Some(bb);
         bb
     }
 
@@ -119,11 +130,9 @@ impl IrBodyGenerator {
         &mut self,
         base: BasicBlock,
         parent: BasicBlock,
-        edge: ControlFlowEdge,
     ) -> BasicBlock {
-        let bb = self.body.make_new_basic_block_from(base, parent, edge);
+        let bb = self.make_basic_block_from(base, parent);
         self.current_block = Some(bb);
-        self.cse_cache.insert_block(bb);
         bb
     }
 
@@ -196,7 +205,7 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_computation(&mut self, comp: &Computation) {
-        let main_block = self.fill_basic_block(ControlFlowEdge::Leaf);
+        let main_block = self.fill_basic_block();
         self.visit_block(&comp.body);
 
         self.body.set_root_block(main_block);
@@ -304,7 +313,7 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_func_decl(&mut self, decl: &FuncDecl) {
-        let root = self.fill_basic_block(ControlFlowEdge::Leaf);
+        let root = self.fill_basic_block();
         self.body.set_root_block(root);
 
         for (i, param) in decl.params.iter().cloned().enumerate() {
@@ -322,19 +331,19 @@ impl AstVisitor for IrBodyGenerator {
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
         // fill new basic block for then
-        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb, ControlFlowEdge::Leaf);
+        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb);
         self.visit_block(&if_stmt.then_block);
         let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
         // pre-allocate join basic block
         // use the then block as the basis for the join block's values to make phi discovery easier
-        let join_bb = self.body.make_new_basic_block_from(then_end_bb, condition_bb, ControlFlowEdge::Leaf);
+        let join_bb = self.make_basic_block_from(then_end_bb, condition_bb);
 
         // connect inner blocks together depending on presence of else
         let (dest_bb, phi_compare_bb, else_bb) = match if_stmt.else_block {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
-                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb, ControlFlowEdge::Leaf);
+                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
                 self.visit_block(else_block);
                 let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
 
@@ -364,7 +373,7 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
-        let start_bb = self.body.make_new_basic_block_from(prev_bb, prev_bb, ControlFlowEdge::Leaf);
+        let start_bb = self.make_basic_block_from(prev_bb, prev_bb);
         self.body.connect_via_fallthrough(prev_bb, start_bb);
 
         let phis = PhiDetectionPass::run(self.body.basic_block_data(start_bb), &loop_stmt.body)
@@ -383,11 +392,11 @@ impl AstVisitor for IrBodyGenerator {
             })
             .collect::<Vec<_>>();
 
-        let body_bb = self.fill_basic_block_from(start_bb, start_bb, ControlFlowEdge::Leaf);
+        let body_bb = self.fill_basic_block_from(start_bb, start_bb);
         self.visit_block(&loop_stmt.body);
 
         self.body.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
-        let post_bb = self.body.make_new_basic_block_from(start_bb, start_bb, ControlFlowEdge::Leaf);
+        let post_bb = self.make_basic_block_from(start_bb, start_bb);
 
         self.current_block = Some(start_bb);
 
