@@ -11,8 +11,6 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR instruction set design
 - [x] IR generation from AST
   - [x] Support for user-defined functions
-  - [ ] Refactor to the "instruction pointer" IR model
-    * Don't delete the old code, just move it somewhere else (maybe switch back later)
 - [x] IR formatting
   - [x] Text (like weird assembly)
   - [x] Graph
@@ -26,8 +24,9 @@ Roadmap for goals to accomplish this quarter:
   - [ ] Scanner
   - [x] Parser
   - [ ] IR generation
-  - [ ] IR optimization (CSE)
+  - [ ] CSE
     - [ ] Domination hierarchy construction
+  - [ ] Constant propagation (make sure it _specifically_ works)
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
@@ -35,15 +34,15 @@ Roadmap for goals to accomplish this quarter:
   - [ ] Codegen
 
 ### Should Have
-- [ ] More optimizations
-  - [ ] Constant propagation
-  - [ ] Dead code elimination
+- [x] Constant propagation
 - [ ] Config levels
   * Just the general idea of providing a way to opt in or out of certain advanced features
   * Mainly useful for offering a "standard" mode which enables exactly the set of features required for CS 142B, and then other mode(s) for advanced stuff
   * Likely manifests itself in 2 ways: optimization levels and "strict mode" (which enables extra semantic checks)
 
 ### Nice to Have
+- [ ] More optimizations
+  - [ ] Dead code elimination
 - [ ] ARM/macOS backend & codegen (with or without system `cc` dependency)
 - [ ] x86/macOS backend & codegen (with or without system `cc` dependency)
 - [ ] x86/Linux backend & codegen (with or without system `cc` dependency)
