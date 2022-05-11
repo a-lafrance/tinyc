@@ -1,6 +1,9 @@
 mod isa;
 
-use std::io::{self, BufWriter, Write};
+use std::{
+    collections::HashSet,
+    io::{self, BufWriter, Write},
+};
 use crate::ir::{
     isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value},
     visit::{self, IrVisitor},
@@ -20,11 +23,12 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
 struct DlxCodegen<'b, 'wr, W: Write> {
     body: &'b Body,
     writer: &'wr mut BufWriter<W>,
+    visited: HashSet<BasicBlock>,
 }
 
 impl<'b, 'wr, W: Write> DlxCodegen<'b, 'wr, W> {
     pub fn new(body: &'b Body, writer: &'wr mut BufWriter<W>) -> DlxCodegen<'b, 'wr, W> {
-        DlxCodegen { body, writer }
+        DlxCodegen { body, writer, visited: HashSet::new() }
     }
 }
 
@@ -35,12 +39,29 @@ impl<W: Write> IrVisitor for DlxCodegen<'_, '_, W> {
         }
     }
 
-    fn visit_basic_block(&mut self, _bb: BasicBlock, bb_data: &BasicBlockData) {
-        visit::walk_basic_block(self, bb_data);
+    fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
+        // emit label for basic block
+        // TODO: disambiguate blocks based on body name
+        if !self.visited.contains(&bb) {
+            self.visited.insert(bb);
+            writeln!(self.writer, "{}:", bb);
+            visit::walk_basic_block(self, bb_data);
 
-        // visit fallthrough
-        // visit branch
-            // how does branching work?
+            if let Some(ft_dest) = bb_data.fallthrough_dest() {
+                let ft_dest_data = self.body.basic_block_data(ft_dest);
+                self.visit_basic_block(ft_dest, ft_dest_data);
+            }
+
+            if let Some(br_dest) = bb_data.branch_dest() {
+                let br_dest_data = self.body.basic_block_data(br_dest);
+                self.visit_basic_block(br_dest, br_dest_data);
+            }
+        }
+    }
+
+    fn visit_instr(&mut self, instr: &Instruction) {
+        write!(self.writer, "  ");
+        visit::walk_instr(self, instr);
     }
 
     fn visit_branch_instr(&mut self, _opcode: BranchOpcode, _dest: BasicBlock) {

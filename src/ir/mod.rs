@@ -10,6 +10,18 @@ use self::{
     isa::Body,
 };
 
+// NOTE: constant folding/propagation notes
+    // buffer a new prelude block for new constants
+    // go through all instructions in body, keeping track of constants as you go:
+        // keep track of constants in a table of {value : const value}, eg {$0 : 1}
+        // if const, add to const table
+        // otherwise, if it's a const foldable instruction:
+            // if both operands are const, perform calculation (fold consts)
+            // if const already has value, substitute that value
+            // otherwise, buffer new constant for folded result
+            // propagate new constant's value in all future instructions
+        // you may have to continually repeat this pass until you get no new edits, to continue the propagation
+
 #[derive(Debug)]
 pub struct IrStore {
     bodies: HashMap<String, Body>,

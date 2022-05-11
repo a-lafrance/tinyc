@@ -7,6 +7,7 @@ use std::{
 };
 use clap::Parser as ArgParse;
 use crate::{
+    codegen::SupportedArch,
     ir::IrStore,
     parser::Parser,
     scanner,
@@ -24,6 +25,9 @@ struct Config {
 
     #[clap(long, help = "Format to dump generated IR")]
     dump_ir: Option<IrDumpFormat>,
+
+    #[clap(short, long, help = "Architecture to emit native code for")]
+    arch: Option<SupportedArch>,
 }
 
 pub fn start<Args, T>(args: Args)
