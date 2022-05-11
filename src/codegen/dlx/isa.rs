@@ -1,4 +1,5 @@
 use bytes::{BufMut, Bytes, BytesMut};
+use crate::ir::isa::StoredBinaryOpcode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -66,6 +67,18 @@ pub enum F2Opcode {
 impl F2Opcode {
     pub fn as_bytes(self) -> u32 {
         (self as u8) as u32
+    }
+}
+
+impl From<StoredBinaryOpcode> for F2Opcode {
+    fn from(opcode: StoredBinaryOpcode) -> Self {
+        match opcode {
+            StoredBinaryOpcode::Add => F2Opcode::Add,
+            StoredBinaryOpcode::Sub => F2Opcode::Sub,
+            StoredBinaryOpcode::Mul => F2Opcode::Mul,
+            StoredBinaryOpcode::Div => F2Opcode::Div,
+            StoredBinaryOpcode::Phi => todo!(),
+        }
     }
 }
 

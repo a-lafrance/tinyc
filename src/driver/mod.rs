@@ -36,13 +36,6 @@ where
     T: Into<OsString> + Clone,
 {
     let config = Config::parse_from(args);
-
-    // TODO: better way to encode this
-    if config.dump_ir.is_some() && config.arch.is_some() {
-        eprintln!("error: '--arch' not supported with '--dump-ir'");
-        return;
-    }
-
     let mut src_file = File::open(config.input).expect("failed to open input file");
     let mut input = String::new();
     src_file

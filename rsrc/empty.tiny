@@ -1,5 +1,19 @@
 main
+var a, b;
+
 {
-    call OutputNum(5);
+    let a <- call InputNum();
+    let b <- call InputNum();
+
+    call OutputNum(a + b);
+    call OutputNewLine();
+
+    call OutputNum(a - b);
+    call OutputNewLine();
+
+    call OutputNum(a * b);
+    call OutputNewLine();
+
+    call OutputNum(a / b);
     call OutputNewLine();
 }.

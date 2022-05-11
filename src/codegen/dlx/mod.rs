@@ -101,16 +101,21 @@ impl<W: Write> IrVisitor for DlxCodegen<'_, '_, W> {
         todo!();
     }
 
-    fn visit_read_instr(&mut self, _dest: Value) {
-        todo!();
+    fn visit_read_instr(&mut self, dest: Value) {
+        self.emit_instr(Instruction::F2(F2Opcode::Rdd, self.reg_for_val(dest), Register::R0, Register::R0));
     }
 
     fn visit_return_instr(&mut self) {
         todo!();
     }
 
-    fn visit_stored_binop_instr(&mut self, _opcode: StoredBinaryOpcode, _src1: Value, _src2: Value, _dest: Value) {
-        todo!();
+    fn visit_stored_binop_instr(&mut self, opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value) {
+        self.emit_instr(Instruction::F2(
+            F2Opcode::from(opcode),
+            self.reg_for_val(dest),
+            self.reg_for_val(src1),
+            self.reg_for_val(src2),
+        ));
     }
 
     fn visit_write_instr(&mut self, src: Value) {
