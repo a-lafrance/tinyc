@@ -36,6 +36,10 @@ impl Body {
     }
 
     pub fn set_root_block(&mut self, bb: BasicBlock) {
+        if let Some(current_root) = self.root {
+            self.establish_dominance(bb, current_root);
+        }
+
         self.root = Some(bb);
     }
 
@@ -66,6 +70,18 @@ impl Body {
         self.push_basic_block(bb)
     }
 
+    pub fn make_new_root(&mut self) -> BasicBlock {
+        let new_root = self.make_new_basic_block();
+
+        if let Some(current_root) = self.root {
+            self.establish_dominance(new_root, current_root);
+            self.connect_via_fallthrough(new_root, current_root);
+        }
+
+        self.root = Some(new_root);
+        new_root
+    }
+
     fn push_basic_block(&mut self, bb: BasicBlockData) -> BasicBlock {
         self.blocks.push(bb);
         BasicBlock(self.blocks.len() - 1)
@@ -89,6 +105,9 @@ impl Body {
     }
 }
 
+// An "instruction pointer" to an instruction in a basic block
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Ip(BasicBlock, usize);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {

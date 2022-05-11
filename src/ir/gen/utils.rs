@@ -7,39 +7,37 @@ use crate::{
     ir::isa::{BasicBlockData, Body, Instruction, Value},
 };
 
-pub struct ConstAllocator(HashMap<u32, Value>);
+#[derive(Default)]
+pub struct ConstAllocator {
+    by_const: HashMap<u32, Value>,
+    by_val: HashMap<Value, u32>,
+}
 
 impl ConstAllocator {
-    pub fn new() -> ConstAllocator {
-        ConstAllocator(HashMap::new())
-    }
-
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.by_val.is_empty()
     }
 
-    pub fn get(&self, n: u32) -> Option<Value> {
-        self.0.get(&n).copied()
+    pub fn val_for_const(&self, n: u32) -> Option<Value> {
+        self.by_const.get(&n).copied()
+    }
+
+    pub fn const_for_val(&self, val: Value) -> Option<u32> {
+        self.by_val.get(&val).copied()
     }
 
     pub fn alloc(&mut self, n: u32, val: Value) {
-        self.0.insert(n, val);
+        self.by_const.insert(n, val);
+        self.by_val.insert(val, n);
     }
 
     pub fn make_prelude_block(&self, body: &mut Body) {
         if !self.is_empty() {
-            let prelude_block = body.make_new_basic_block();
+            let prelude_block = body.make_new_root();
 
-            for (n, val) in self.0.iter().map(|(n, v)| (*n, *v)) {
+            for (n, val) in self.by_const.iter().map(|(n, v)| (*n, *v)) {
                 body.push_instr(prelude_block, Instruction::Const(n, val));
             }
-
-            if let Some(root) = body.root_block() {
-                body.connect_via_fallthrough(prelude_block, root);
-                body.establish_dominance(prelude_block, root);
-            }
-
-            body.set_root_block(prelude_block);
         }
     }
 }
