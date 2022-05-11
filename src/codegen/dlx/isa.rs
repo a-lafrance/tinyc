@@ -1,5 +1,5 @@
 use bytes::{BufMut, Bytes, BytesMut};
-use crate::ir::isa::StoredBinaryOpcode;
+use crate::ir::isa::{BranchOpcode, StoredBinaryOpcode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -56,6 +56,23 @@ pub enum F1Opcode {
 impl F1Opcode {
     pub fn as_bytes(self) -> u32 {
         (self as u8) as u32
+    }
+
+    pub fn is_branch(&self) -> bool {
+        matches!(self, F1Opcode::Beq | F1Opcode::Bne | F1Opcode::Blt | F1Opcode::Bge | F1Opcode::Ble | F1Opcode::Bgt)
+    }
+}
+
+impl From<BranchOpcode> for F1Opcode {
+    fn from(opcode: BranchOpcode) -> Self {
+        match opcode {
+            BranchOpcode::Br | BranchOpcode::Beq => F1Opcode::Beq,
+            BranchOpcode::Bne => F1Opcode::Bne,
+            BranchOpcode::Bgt => F1Opcode::Bgt,
+            BranchOpcode::Bge => F1Opcode::Bge,
+            BranchOpcode::Blt => F1Opcode::Blt,
+            BranchOpcode::Ble => F1Opcode::Ble,
+        }
     }
 }
 
