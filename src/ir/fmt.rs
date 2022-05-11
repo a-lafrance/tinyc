@@ -4,7 +4,7 @@ use std::{
 };
 use crate::utils::take_result;
 use super::{
-    isa::{BasicBlock, BasicBlockData, Body, Instruction},
+    isa::{BasicBlock, BasicBlockData, Body, ControlFlowEdge, Instruction},
     visit::IrVisitor,
 };
 
@@ -32,12 +32,30 @@ impl<W: Write> IrFormatter<W> {
             visited.insert(bb);
             let bb_data = self.fmt_single_basic_block(bb, body)?;
 
-            if let Some(fallthrough_bb) = bb_data.fallthrough_dest() {
-                self.fmt_basic_block(fallthrough_bb, body, visited)?;
-            }
+            match bb_data.edge() {
+                ControlFlowEdge::Fallthrough(dest) => self.fmt_basic_block(dest, body, visited)?,
+                ControlFlowEdge::Branch(dest) => self.fmt_basic_block(dest, body, visited)?,
+                ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb) => {
+                    // add join to visited
+                    visited.insert(join_bb);
 
-            if let Some(branch_bb) = bb_data.branch_dest() {
-                self.fmt_basic_block(branch_bb, body, visited)?;
+                    // walk then path until join
+                    self.fmt_basic_block(then_bb, body, visited)?;
+
+                    // walk else path until join
+                    if let Some(else_bb) = else_bb {
+                        self.fmt_basic_block(else_bb, body, visited)?;
+                    }
+
+                    // rm join from visited, walk join path
+                    visited.remove(&join_bb);
+                    self.fmt_basic_block(join_bb, body, visited)?;
+                },
+                ControlFlowEdge::Loop(body_bb, follow_bb) => {
+                    self.fmt_basic_block(body_bb, body, visited)?;
+                    self.fmt_basic_block(follow_bb, body, visited)?;
+                },
+                ControlFlowEdge::Leaf => (),
             }
         }
 
@@ -125,6 +143,14 @@ impl<W: Write> GraphWriter<W> {
     pub fn new(wr: W) -> GraphWriter<W> {
         GraphWriter(wr, Ok(()))
     }
+
+    fn emit_fallthrough(&mut self, src: BasicBlock, dest: BasicBlock) -> FmtResult {
+        writeln!(self.0, "{}:s -> {}:n [label=\"fallthrough\"];", src, dest)
+    }
+
+    fn emit_branch(&mut self, src: BasicBlock, dest: BasicBlock) -> FmtResult {
+        writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", src, dest)
+    }
 }
 
 impl<W: Write> IrWriter for GraphWriter<W> {
@@ -144,13 +170,21 @@ impl<W: Write> IrWriter for GraphWriter<W> {
 
         writeln!(self.0, "}}\"];")?;
 
-        // FIXME: this feels like repeat code from above
-        if let Some(fallthrough_bb) = bb_data.fallthrough_dest() {
-            writeln!(self.0, "{}:s -> {}:n [label=\"fallthrough\"];", bb, fallthrough_bb)?;
-        }
+        match bb_data.edge() {
+            ControlFlowEdge::Leaf => (),
+            ControlFlowEdge::Fallthrough(dest_bb) => self.emit_fallthrough(bb, dest_bb)?,
+            ControlFlowEdge::Branch(dest_bb) => self.emit_branch(bb, dest_bb)?,
+            ControlFlowEdge::IfStmt(then_bb, else_bb, _) => {
+                self.emit_fallthrough(bb, then_bb)?;
 
-        if let Some(branch_bb) = bb_data.branch_dest() {
-            writeln!(self.0, "{}:s -> {}:n [label=\"branch\"];", bb, branch_bb)?;
+                if let Some(else_bb) = else_bb {
+                    self.emit_branch(bb, else_bb)?;
+                }
+            },
+            ControlFlowEdge::Loop(body_bb, follow_bb) => {
+                self.emit_fallthrough(bb, body_bb)?;
+                self.emit_branch(bb, follow_bb)?;
+            },
         }
 
         if let Some(dominator) = bb_data.dominator() {

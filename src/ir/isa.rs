@@ -63,23 +63,31 @@ impl Body {
         self.basic_block_data_mut(bb).assign(var, val);
     }
 
-    pub fn make_new_basic_block(&mut self) -> BasicBlock {
-        self.push_basic_block(BasicBlockData::new())
+    pub fn make_new_basic_block(&mut self, edge: ControlFlowEdge) -> BasicBlock {
+        self.push_basic_block(BasicBlockData::new(edge))
     }
 
     /// Base means basic block whose values should serve as the base for the new one
     /// Parent means parent in the domination hierarchy
-    pub fn make_new_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
-        let bb = BasicBlockData::new_from(self.basic_block_data(base), parent);
+    pub fn make_new_basic_block_from(
+        &mut self,
+        base: BasicBlock,
+        parent: BasicBlock,
+        edge: ControlFlowEdge
+    ) -> BasicBlock {
+        let bb = BasicBlockData::new_from(self.basic_block_data(base), edge, parent);
         self.push_basic_block(bb)
     }
 
     pub fn make_new_root(&mut self) -> BasicBlock {
-        let new_root = self.make_new_basic_block();
+        let edge = match self.root {
+            Some(root) => ControlFlowEdge::Fallthrough(root),
+            None => ControlFlowEdge::Leaf,
+        };
+        let new_root = self.make_new_basic_block(edge);
 
-        if let Some(current_root) = self.root {
-            self.establish_dominance(new_root, current_root);
-            self.connect_via_fallthrough(new_root, current_root);
+        if let ControlFlowEdge::Fallthrough(old_root) = edge {
+            self.establish_dominance(new_root, old_root);
         }
 
         self.root = Some(new_root);
@@ -95,12 +103,16 @@ impl Body {
         self.basic_block_data_mut(block).push_instr(instr);
     }
 
+    pub fn set_edge_for_block(&mut self, bb: BasicBlock, edge: ControlFlowEdge) {
+        self.basic_block_data_mut(bb).set_edge(edge);
+    }
+
     pub fn connect_via_fallthrough(&mut self, src: BasicBlock, dest: BasicBlock) {
-        self.basic_block_data_mut(src).set_fallthrough_dest(dest);
+        self.set_edge_for_block(src, ControlFlowEdge::Fallthrough(dest))
     }
 
     pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
-        self.basic_block_data_mut(src).set_branch_dest(dest);
+        self.set_edge_for_block(src, ControlFlowEdge::Branch(dest));
         self.push_instr(src, Instruction::Branch(branch_type, dest));
     }
 
@@ -108,10 +120,6 @@ impl Body {
         self.basic_block_data_mut(child).set_dominator(parent);
     }
 }
-
-// An "instruction pointer" to an instruction in a basic block
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Ip(BasicBlock, usize);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
@@ -255,37 +263,34 @@ impl Display for BasicBlock {
 pub struct BasicBlockData {
     body: Vec<Instruction>,
     val_table: HashMap<String, Value>,
-    fallthrough_dest: Option<BasicBlock>,
-    branch_dest: Option<BasicBlock>,
+    edge: ControlFlowEdge,
     dominator: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
-    pub fn new() -> BasicBlockData {
-        BasicBlockData::from(HashMap::new(), None)
+    pub fn new(edge: ControlFlowEdge) -> BasicBlockData {
+        BasicBlockData::from(edge, HashMap::new(), None)
     }
 
-    pub fn new_from(bb: &BasicBlockData, dominator: BasicBlock) -> BasicBlockData {
-        BasicBlockData::from(bb.val_table.clone(), Some(dominator))
+    pub fn new_from(bb: &BasicBlockData, edge: ControlFlowEdge, dominator: BasicBlock) -> BasicBlockData {
+        BasicBlockData::from(edge, bb.val_table.clone(), Some(dominator))
     }
 
     #[cfg(test)]
     pub fn with(
         body: Vec<Instruction>,
-        fallthrough_dest: Option<BasicBlock>,
-        branch_dest: Option<BasicBlock>,
+        edge: ControlFlowEdge,
         dominator: Option<BasicBlock>
     ) -> BasicBlockData {
-        BasicBlockData { body, fallthrough_dest, branch_dest, dominator, val_table: HashMap::new() }
+        BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
     }
 
-    fn from(val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
+    fn from(edge: ControlFlowEdge, val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {
             body: vec![],
             val_table,
-            fallthrough_dest: None,
-            branch_dest: None,
-            dominator
+            edge,
+            dominator,
         }
     }
 
@@ -305,24 +310,16 @@ impl BasicBlockData {
         ValueIter(self.val_table.iter())
     }
 
+    pub fn edge(&self) -> ControlFlowEdge {
+        self.edge
+    }
+
+    pub fn set_edge(&mut self, edge: ControlFlowEdge) {
+        self.edge = edge;
+    }
+
     pub fn push_instr(&mut self, instr: Instruction) {
         self.body.push(instr);
-    }
-
-    pub fn fallthrough_dest(&self) -> Option<BasicBlock> {
-        self.fallthrough_dest
-    }
-
-    pub fn set_fallthrough_dest(&mut self, dest: BasicBlock) {
-        self.fallthrough_dest = Some(dest);
-    }
-
-    pub fn branch_dest(&self) -> Option<BasicBlock> {
-        self.branch_dest
-    }
-
-    pub fn set_branch_dest(&mut self, dest: BasicBlock) {
-        self.branch_dest = Some(dest);
     }
 
     pub fn dominator(&self) -> Option<BasicBlock> {
@@ -347,36 +344,6 @@ impl BasicBlockData {
             }
         )
     }
-
-    pub fn control_flow_kind(&self, body: &Body) -> ControlFlowEdge {
-        if let Some(ft_dest) = self.fallthrough_dest() {
-            if let Some(br_dest) = self.branch_dest() {
-                ControlFlowEdge::IfStmt(ft_dest, br_dest)
-            } else if let Some(loop_body) = body.basic_block_data(ft_dest).loop_body(ft_dest, body) {
-                ControlFlowEdge::Loop(ft_dest, loop_body)
-            } else {
-                ControlFlowEdge::Fallthrough(ft_dest)
-            }
-        } else if let Some(br_dest) = self.branch_dest() {
-            ControlFlowEdge::Branch(br_dest)
-        } else {
-            ControlFlowEdge::Leaf
-        }
-    }
-
-    fn loop_body(&self, self_bb: BasicBlock, body: &Body) -> Option<BasicBlock> {
-        // if this block's ft dest is Branch with dest = self, then yes
-        let ft_dest = self.fallthrough_dest()?;
-        let ft_bb_data = body.basic_block_data(ft_dest);
-
-        let ft_br_dest = ft_bb_data.branch_dest()?;
-
-        if ft_bb_data.fallthrough_dest().is_none() && ft_br_dest == self_bb {
-            Some(ft_dest)
-        } else {
-            None
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -384,7 +351,7 @@ pub enum ControlFlowEdge {
     Leaf,
     Fallthrough(BasicBlock),
     Branch(BasicBlock),
-    IfStmt(BasicBlock, BasicBlock),
+    IfStmt(BasicBlock, Option<BasicBlock>, BasicBlock),
     Loop(BasicBlock, BasicBlock),
 }
 

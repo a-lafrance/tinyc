@@ -4,7 +4,7 @@ pub(crate) mod ast;
 pub(crate) mod codegen;
 pub(crate) mod ir;
 pub(crate) mod parser;
-pub(crate) mod regalloc;
+// pub(crate) mod regalloc;
 pub(crate) mod scanner;
 pub(crate) mod semcheck;
 pub(crate) mod sym;

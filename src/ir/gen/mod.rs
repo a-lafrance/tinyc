@@ -13,7 +13,7 @@ use self::{
     utils::{ConstAllocator, PhiDetectionPass},
 };
 use super::{
-    isa::{BasicBlock, Body, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, Body, BranchOpcode, CCLocation, ControlFlowEdge, Instruction, StoredBinaryOpcode, Value},
     IrStore,
 };
 
@@ -108,15 +108,20 @@ impl IrBodyGenerator {
         }));
     }
 
-    fn fill_basic_block(&mut self) -> BasicBlock {
-        let bb = self.body.make_new_basic_block();
+    fn fill_basic_block(&mut self, edge: ControlFlowEdge) -> BasicBlock {
+        let bb = self.body.make_new_basic_block(edge);
         self.current_block = Some(bb);
         self.cse_cache.insert_block(bb);
         bb
     }
 
-    fn fill_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
-        let bb = self.body.make_new_basic_block_from(base, parent);
+    fn fill_basic_block_from(
+        &mut self,
+        base: BasicBlock,
+        parent: BasicBlock,
+        edge: ControlFlowEdge,
+    ) -> BasicBlock {
+        let bb = self.body.make_new_basic_block_from(base, parent, edge);
         self.current_block = Some(bb);
         self.cse_cache.insert_block(bb);
         bb
@@ -191,7 +196,7 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_computation(&mut self, comp: &Computation) {
-        let main_block = self.fill_basic_block();
+        let main_block = self.fill_basic_block(ControlFlowEdge::Leaf);
         self.visit_block(&comp.body);
 
         self.body.set_root_block(main_block);
@@ -299,7 +304,7 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_func_decl(&mut self, decl: &FuncDecl) {
-        let root = self.fill_basic_block();
+        let root = self.fill_basic_block(ControlFlowEdge::Leaf);
         self.body.set_root_block(root);
 
         for (i, param) in decl.params.iter().cloned().enumerate() {
@@ -317,22 +322,19 @@ impl AstVisitor for IrBodyGenerator {
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
         // fill new basic block for then
-        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb);
+        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb, ControlFlowEdge::Leaf);
         self.visit_block(&if_stmt.then_block);
         let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
-        // connect start basic block to then basic block via fallthrough
-        self.body.connect_via_fallthrough(condition_bb, then_bb);
-
         // pre-allocate join basic block
         // use the then block as the basis for the join block's values to make phi discovery easier
-        let join_bb = self.body.make_new_basic_block_from(then_end_bb, condition_bb);
+        let join_bb = self.body.make_new_basic_block_from(then_end_bb, condition_bb, ControlFlowEdge::Leaf);
 
         // connect inner blocks together depending on presence of else
-        let (dest_bb, phi_compare_bb) = match if_stmt.else_block {
+        let (dest_bb, phi_compare_bb, else_bb) = match if_stmt.else_block {
             Some(ref else_block) => {
                 // if else block exists, fill new basic block for it
-                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
+                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb, ControlFlowEdge::Leaf);
                 self.visit_block(else_block);
                 let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
 
@@ -340,19 +342,20 @@ impl AstVisitor for IrBodyGenerator {
                 // connect else block to join block via fallthrough
                 self.body.connect_via_branch(then_end_bb, join_bb, BranchOpcode::Br);
                 self.body.connect_via_fallthrough(else_end_bb, join_bb);
-                (else_bb, else_end_bb)
+                (else_bb, else_end_bb, Some(else_bb))
             },
 
             None => {
                 // connect then block to join block via fallthrough
                 self.body.connect_via_fallthrough(then_end_bb, join_bb);
-                (join_bb, condition_bb)
+                (join_bb, condition_bb, None)
             },
         };
 
         // connect start block to destination block (either join or else) via conditional branch
         let branch_opcode = BranchOpcode::from(if_stmt.condition.op.negated());
-        self.body.connect_via_branch(condition_bb, dest_bb, branch_opcode);
+        self.body.set_edge_for_block(condition_bb, ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb));
+        self.body.push_instr(condition_bb, Instruction::Branch(branch_opcode, dest_bb));
 
         // fast-forward to join block
         self.current_block = Some(join_bb);
@@ -361,7 +364,7 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
-        let start_bb = self.body.make_new_basic_block_from(prev_bb, prev_bb);
+        let start_bb = self.body.make_new_basic_block_from(prev_bb, prev_bb, ControlFlowEdge::Leaf);
         self.body.connect_via_fallthrough(prev_bb, start_bb);
 
         let phis = PhiDetectionPass::run(self.body.basic_block_data(start_bb), &loop_stmt.body)
@@ -380,12 +383,11 @@ impl AstVisitor for IrBodyGenerator {
             })
             .collect::<Vec<_>>();
 
-        let body_bb = self.fill_basic_block_from(start_bb, start_bb);
-        self.body.connect_via_fallthrough(start_bb, body_bb);
+        let body_bb = self.fill_basic_block_from(start_bb, start_bb, ControlFlowEdge::Leaf);
         self.visit_block(&loop_stmt.body);
 
         self.body.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
-        let post_bb = self.body.make_new_basic_block_from(start_bb, start_bb);
+        let post_bb = self.body.make_new_basic_block_from(start_bb, start_bb, ControlFlowEdge::Leaf);
 
         self.current_block = Some(start_bb);
 
@@ -401,7 +403,11 @@ impl AstVisitor for IrBodyGenerator {
         }
 
         self.visit_relation(&loop_stmt.condition);
-        self.body.connect_via_branch(start_bb, post_bb, BranchOpcode::from(loop_stmt.condition.op.negated()));
+        self.body.set_edge_for_block(start_bb, ControlFlowEdge::Loop(body_bb, post_bb));
+        self.body.push_instr(
+            start_bb,
+            Instruction::Branch(BranchOpcode::from(loop_stmt.condition.op.negated()), post_bb),
+        );
         self.current_block = Some(post_bb);
     }
 

@@ -5,7 +5,7 @@ use std::{
     io::{BufWriter, Write},
 };
 use crate::ir::{
-    isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, StoredBinaryOpcode, Value},
+    isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, ControlFlowEdge, StoredBinaryOpcode, Value},
     visit::{self, IrVisitor},
     IrStore,
 };
@@ -36,7 +36,8 @@ struct DlxCodegen<'b> {
     buffer: Vec<Instruction>,
     labels: HashMap<BasicBlock, u16>, // labels bb number to addr of first instruction
     next_instr_addr: u16, // addr in words of next instr
-    current_branch_ip: Option<(usize, u16, BasicBlock)>, // index, addr of current branch instruction
+    unresolved_branches: Vec<UnresolvedBranch>,
+    cutoff_point: Option<BasicBlock>,
 }
 
 impl<'b> DlxCodegen<'b> {
@@ -46,7 +47,8 @@ impl<'b> DlxCodegen<'b> {
             buffer: Vec::new(),
             labels: HashMap::new(),
             next_instr_addr: 0,
-            current_branch_ip: None,
+            unresolved_branches: Vec::new(),
+            cutoff_point: None,
         }
     }
 
@@ -74,6 +76,28 @@ impl<'b> DlxCodegen<'b> {
     fn reg_for_val(&self, val: Value) -> Register {
         Register((val.0 + 1) as u8)
     }
+
+    fn mark_unresolved_branch(&mut self, ip: usize, addr: u16, dest: BasicBlock) {
+        self.unresolved_branches.push(UnresolvedBranch { ip, addr, dest });
+    }
+
+    fn resolve_branches(&mut self) {
+        for unresolved_br in self.unresolved_branches.iter() {
+            let offset = self.branch_offset(
+                unresolved_br.addr,
+                unresolved_br.dest,
+            ).expect("missing label for branch instr");
+
+            match self.buffer[unresolved_br.ip] {
+                Instruction::F1(opcode, _, _, ref mut dest) if opcode.is_branch() => *dest = offset,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    fn load_and_visit_basic_block(&mut self, bb: BasicBlock) {
+        self.visit_basic_block(bb, self.body.basic_block_data(bb));
+    }
 }
 
 impl IrVisitor for DlxCodegen<'_> {
@@ -81,68 +105,72 @@ impl IrVisitor for DlxCodegen<'_> {
         if let Some((root, root_bb)) = body.root_block_data() {
             self.visit_basic_block(root, root_bb);
         }
+
+        self.resolve_branches();
     }
 
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
         // emit label for basic block
         if !self.labels.contains_key(&bb) {
             self.mark_label(bb);
-
             visit::walk_basic_block(self, bb_data);
-            let branch_ip = self.current_branch_ip;
 
-            if let Some(ft_dest) = bb_data.fallthrough_dest() {
-                let ft_dest_data = self.body.basic_block_data(ft_dest);
-                self.visit_basic_block(ft_dest, ft_dest_data);
-            }
+            match bb_data.edge() {
+                ControlFlowEdge::Leaf => (),
+                ControlFlowEdge::Fallthrough(dest) => {
+                    self.load_and_visit_basic_block(dest);
+                },
+                ControlFlowEdge::Branch(dest) => {
+                    self.load_and_visit_basic_block(dest);
+                },
+                ControlFlowEdge::IfStmt(then_bb, Some(else_bb), join_bb) => {
+                    // ONLY IF ELSE BLOCK
+                        // IF NO ELSE BLOCK, NO NEED FOR ANYTHING FANCY
+                    // save prev cutoff point
+                    let prev_cutoff_point = self.cutoff_point;
 
-            if let Some(br_dest) = bb_data.branch_dest() {
-                let br_dest_data = self.body.basic_block_data(br_dest);
-                self.visit_basic_block(br_dest, br_dest_data);
-            }
+                    // set cutoff point to join block
+                    self.cutoff_point = Some(join_bb);
 
-            // go back and modify branch instruction
-            if let Some((branch_ip, branch_addr, branch_dest)) = branch_ip {
-                let offset = self.branch_offset(
-                    branch_addr,
-                    branch_dest,
-                ).expect("missing label for branch instr");
+                    // visit then block
+                    self.load_and_visit_basic_block(then_bb);
+                    // restore prev cutoff point
+                        // this will implicitly remove the cutoff point if there wasn't a prev
+                    self.cutoff_point = prev_cutoff_point;
 
-                match self.buffer[branch_ip] {
-                    Instruction::F1(opcode, _, _, ref mut dest) if opcode.is_branch() => *dest = offset,
-                    _ => unreachable!(),
+                    // visit else block
+                    self.load_and_visit_basic_block(else_bb);
+                },
+                ControlFlowEdge::IfStmt(then_bb, None, _) => {
+                    // visit then block, which will implicitly visit join block
+                    self.load_and_visit_basic_block(then_bb);
+                },
+                ControlFlowEdge::Loop(body_bb, follow_bb) => {
+                    // visit body and follow blocks
+                    self.load_and_visit_basic_block(body_bb);
+                    self.load_and_visit_basic_block(follow_bb);
                 }
             }
         }
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, dest: BasicBlock) {
-        // rn there's a bug where code is generated out-of-order because the cfg isn't being walked correctly.
-        // this is problematic, but here's the solution:
-            // rather than naively encoding control flow edges with separate ft/branch edges, encode them
-            //   directly w/ ControlFlowEdge (rename to ControlFlowEdge)
-            // what i mean is, every basic block should have one non-optional ControlFlowEdge, which stores exactly
-            //   the configuration of control flow for that basic block. eg for unconditional branch/fallthrough it just
-            //   says that, but for if statements if has (then start bb, else start bb, join bb) and similar for loops
-            // this is good because it gives you more info when walking the cfg, so you can walk it in the right order
-            // then to solve the issue with codegen and walking the cfg, walk the graph differently based on each cfe
-                // for unconditional ft/br, no restrictions necessary
-                // for if stmts, need to implement a "stop at" mechanism to cut off the traversal at the join bb
-                    // ONLY FOR FT PATH, NOT BRANCH PATH
-                // for loops, probably something similar (need to think about this more)
-            // it's useful to extend this to ir formatting too since it suffers from the same problem (txt specifically)
         let comparator = match opcode {
             BranchOpcode::Br => Register::R0,
             _ => Register::RCMP,
         };
+        let offset = self.branch_offset(self.next_instr_addr, dest);
 
         self.emit_instr(Instruction::F1(
             F1Opcode::from(opcode),
             comparator,
             Register::R0,
-            self.branch_offset(self.next_instr_addr, dest).unwrap_or(0), // either encode branch or fill with temporary value
+            offset.unwrap_or(0), // either encode branch or fill with temporary value
         ));
-        self.current_branch_ip = Some((self.buffer.len() - 1, self.next_instr_addr - 1, dest));
+
+        if offset.is_none() {
+            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr, dest);
+        }
     }
 
     fn visit_call_instr(&mut self, _func: &str) {
@@ -199,4 +227,12 @@ impl IrVisitor for DlxCodegen<'_> {
     fn visit_writeln_instr(&mut self) {
         self.emit_instr(Instruction::F1(F1Opcode::Wrl, Register::R0, Register::R0, 0));
     }
+}
+
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct UnresolvedBranch {
+    pub ip: usize,
+    pub addr: u16,
+    pub dest: BasicBlock,
 }
