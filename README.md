@@ -17,8 +17,8 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR-based optimizations
   - [x] Copy propagation
   - [x] Common subexpression elimination
-- [ ] DLX backend
-  - [ ] Register allocation
+- [ ] Register allocation
+- [x] DLX backend
   - [x] Codegen
 - [ ] Tons and tons of tests
   - [ ] Scanner
