@@ -1,8 +1,8 @@
 mod isa;
 
 use std::{
-    collections::{HashMap, HashSet},
-    io::{self, BufWriter, Write},
+    collections::{HashMap},
+    io::{BufWriter, Write},
 };
 use crate::ir::{
     isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, StoredBinaryOpcode, Value},

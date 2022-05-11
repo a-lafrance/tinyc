@@ -101,7 +101,7 @@ impl From<StoredBinaryOpcode> for F2Opcode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F3Opcode {
-    Addi = 16, Subi, Muli, Divi, Cmpi = 21,
+    Jsr = 48
 }
 
 impl F3Opcode {

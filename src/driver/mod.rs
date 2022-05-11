@@ -3,7 +3,7 @@ mod dump;
 use std::{
     ffi::OsString,
     fs::File,
-    io::{self, BufWriter, Read, Write},
+    io::{self, BufWriter, Read},
 };
 use clap::Parser as ArgParse;
 use crate::{
@@ -58,7 +58,7 @@ where
 
                 dump_result.expect("failed to dump IR");
             } else if let Some(SupportedArch::Dlx) = config.arch {
-                let mut outfile = File::create(config.output.unwrap_or("a.out".to_string()))
+                let outfile = File::create(config.output.unwrap_or_else(|| "a.out".to_string()))
                     .expect("failed to open output file");
                 dlx::gen_code(ir, BufWriter::new(outfile));
             }
