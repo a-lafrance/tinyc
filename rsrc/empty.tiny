@@ -1,0 +1,5 @@
+main
+{
+    call OutputNum(5);
+    call OutputNewLine();
+}.

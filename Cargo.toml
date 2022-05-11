@@ -6,6 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytes = "1.1.0"
 clap = { version = "3.1.6", features = ["derive"] }
 maplit = "1.0.2"
 

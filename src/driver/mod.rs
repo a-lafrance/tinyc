@@ -3,11 +3,11 @@ mod dump;
 use std::{
     ffi::OsString,
     fs::File,
-    io::{self, Read},
+    io::{self, BufWriter, Read, Write},
 };
 use clap::Parser as ArgParse;
 use crate::{
-    codegen::SupportedArch,
+    codegen::{dlx, SupportedArch},
     ir::IrStore,
     parser::Parser,
     scanner,
@@ -36,8 +36,14 @@ where
     T: Into<OsString> + Clone,
 {
     let config = Config::parse_from(args);
-    let mut src_file = File::open(config.input).expect("failed to open input file");
 
+    // TODO: better way to encode this
+    if config.dump_ir.is_some() && config.arch.is_some() {
+        eprintln!("error: '--arch' not supported with '--dump-ir'");
+        return;
+    }
+
+    let mut src_file = File::open(config.input).expect("failed to open input file");
     let mut input = String::new();
     src_file
         .read_to_string(&mut input)
@@ -58,6 +64,10 @@ where
                 };
 
                 dump_result.expect("failed to dump IR");
+            } else if let Some(SupportedArch::Dlx) = config.arch {
+                let mut outfile = File::create(config.output.unwrap_or("a.out".to_string()))
+                    .expect("failed to open output file");
+                dlx::gen_code(ir, BufWriter::new(outfile));
             }
         },
 
