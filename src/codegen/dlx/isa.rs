@@ -1,3 +1,4 @@
+use std::fmt::{self, Display, Formatter};
 use bytes::{BufMut, Bytes, BytesMut};
 use crate::ir::isa::{BranchOpcode, StoredBinaryOpcode};
 
@@ -46,6 +47,22 @@ impl Instruction {
     }
 }
 
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Instruction::F1(opcode @ F1Opcode::Wrl, _, _, _) => write!(f, "{}", opcode),
+            Instruction::F1(opcode, r1, _, imm) if opcode.is_branch() => write!(f, "{} {}, {}", opcode, r1, imm),
+            Instruction::F1(opcode, r1, r2, imm) => write!(f, "{} {}, {}, {}", opcode, r1, r2, imm),
+            Instruction::F2(opcode @ F2Opcode::Ret, _, _, dest) => write!(f, "{} {}", opcode, dest),
+            Instruction::F2(opcode @ F2Opcode::Rdd, dest, _, _) => write!(f, "{} {}", opcode, dest),
+            Instruction::F2(opcode @ F2Opcode::Wrd, _, src, _) => write!(f, "{} {}", opcode, src),
+            Instruction::F2(opcode, r1, r2, r3) => write!(f, "{} {}, {}, {}", opcode, r1, r2, r3),
+            Instruction::F3(opcode, imm) => write!(f, "{} {}", opcode, imm),
+        }
+    }
+}
+
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
     Addi = 16, Subi, Muli, Divi, Cmpi = 21,
@@ -63,6 +80,29 @@ impl F1Opcode {
     }
 }
 
+impl Display for F1Opcode {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            F1Opcode::Addi => write!(f, "addi"),
+            F1Opcode::Subi => write!(f, "subi"),
+            F1Opcode::Muli => write!(f, "muli"),
+            F1Opcode::Divi => write!(f, "divi"),
+            F1Opcode::Cmpi => write!(f, "cmpi"),
+            F1Opcode::Ldw => write!(f, "ldw"),
+            F1Opcode::Pop => write!(f, "pop"),
+            F1Opcode::Stw => write!(f, "stw"),
+            F1Opcode::Psh => write!(f, "psh"),
+            F1Opcode::Beq => write!(f, "beq"),
+            F1Opcode::Bne => write!(f, "bne"),
+            F1Opcode::Blt => write!(f, "blt"),
+            F1Opcode::Bge => write!(f, "bge"),
+            F1Opcode::Ble => write!(f, "ble"),
+            F1Opcode::Bgt => write!(f, "bgt"),
+            F1Opcode::Wrl => write!(f, "wrl"),
+        }
+    }
+}
+
 impl From<BranchOpcode> for F1Opcode {
     fn from(opcode: BranchOpcode) -> Self {
         match opcode {
@@ -76,6 +116,7 @@ impl From<BranchOpcode> for F1Opcode {
     }
 }
 
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F2Opcode {
     Add, Sub, Mul, Div, Cmp = 5, Ldx = 33, Stx = 37, Ret = 49, Rdd = 50, Wrd,
@@ -84,6 +125,23 @@ pub enum F2Opcode {
 impl F2Opcode {
     pub fn as_bytes(self) -> u32 {
         (self as u8) as u32
+    }
+}
+
+impl Display for F2Opcode {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            F2Opcode::Add => write!(f, "add"),
+            F2Opcode::Sub => write!(f, "sub"),
+            F2Opcode::Mul => write!(f, "mul"),
+            F2Opcode::Div => write!(f, "div"),
+            F2Opcode::Cmp => write!(f, "cmp"),
+            F2Opcode::Ldx => write!(f, "ldx"),
+            F2Opcode::Stx => write!(f, "stx"),
+            F2Opcode::Ret => write!(f, "ret"),
+            F2Opcode::Rdd => write!(f, "rdd"),
+            F2Opcode::Wrd => write!(f, "wrd"),
+        }
     }
 }
 
@@ -99,6 +157,7 @@ impl From<StoredBinaryOpcode> for F2Opcode {
     }
 }
 
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F3Opcode {
     Jsr = 48
@@ -110,11 +169,26 @@ impl F3Opcode {
     }
 }
 
-// enum?
+impl Display for F3Opcode {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            F3Opcode::Jsr => write!(f, "jsr"),
+        }
+    }
+}
+
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Register(pub u8);
 
 impl Register {
     pub const R0: Register = Register(0);
     pub const RCMP: Register = Register(27);
+    pub const RRET: Register = Register(31);
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "R{}", self.0)
+    }
 }

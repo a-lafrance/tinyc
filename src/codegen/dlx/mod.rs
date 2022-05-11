@@ -70,7 +70,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn branch_offset(&self, src_addr: u16, dest: BasicBlock) -> Option<u16> {
-        self.label_for(dest).map(|l| l - src_addr )
+        self.label_for(dest).map(|l| l - src_addr)
     }
 
     fn reg_for_val(&self, val: Value) -> Register {
@@ -111,7 +111,7 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
         // emit label for basic block
-        if !self.labels.contains_key(&bb) {
+        if Some(bb) != self.cutoff_point && !self.labels.contains_key(&bb) {
             self.mark_label(bb);
             visit::walk_basic_block(self, bb_data);
 
@@ -169,7 +169,7 @@ impl IrVisitor for DlxCodegen<'_> {
         ));
 
         if offset.is_none() {
-            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr, dest);
+            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr - 1, dest);
         }
     }
 
@@ -204,7 +204,7 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_return_instr(&mut self) {
-        todo!();
+        self.emit_instr(Instruction::F2(F2Opcode::Ret, Register::R0, Register::R0, Register::RRET));
     }
 
     fn visit_stored_binop_instr(&mut self, opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value) {
