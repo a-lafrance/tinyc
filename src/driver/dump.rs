@@ -42,7 +42,7 @@ pub struct InvalidDumpFormat(String);
 
 impl Display for InvalidDumpFormat {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "invalid IR dump format '{}'", self.0)
     }
 }
 
