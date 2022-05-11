@@ -169,6 +169,7 @@ impl IrBodyGenerator {
         }
     }
 
+    // MARK: this is where const prop is centered
     fn const_compute_or_emit_instr(
         &mut self,
         opcode: StoredBinaryOpcode,
