@@ -4,19 +4,20 @@ use std::{
     fmt::{self, Display, Formatter},
     error::Error,
     fs::File,
-    io::{self, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
 };
 use self::isa::{F1Opcode, F2Opcode, Instruction, InstrDecodeError, Register};
 
-pub struct Emulator<Stdout: Write> {
+pub struct Emulator<Stdin: BufRead, Stdout: Write> {
     registers: [u32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
     pc: usize,
+    stdin: Stdin,
     stdout: Stdout,
 }
 
-impl<Stdout: Write> Emulator<Stdout> {
-    pub fn load(prog_file: &str, stdout: Stdout) -> Result<Emulator<Stdout>, LoadError> {
+impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
+    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout) -> Result<Emulator<Stdin, Stdout>, LoadError> {
         // open file/bufreader for file
         let f = File::open(prog_file)?;
         let mut reader = BufReader::new(f);
@@ -37,6 +38,7 @@ impl<Stdout: Write> Emulator<Stdout> {
             registers: [0; Register::N_REGS],
             instr_mem,
             pc: 0,
+            stdin,
             stdout,
         })
     }
@@ -63,42 +65,42 @@ impl<Stdout: Write> Emulator<Stdout> {
                 ControlFlow::Continue
             },
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) == 0 {
+                if self.load_cmp(cmp_reg) == 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) != 0 {
+                if self.load_cmp(cmp_reg) != 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Ble, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) <= 0 {
+                if self.load_cmp(cmp_reg) <= 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bgt, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) > 0 {
+                if self.load_cmp(cmp_reg) > 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) < 0 {
+                if self.load_cmp(cmp_reg) < 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) >= 0 {
+                if self.load_cmp(cmp_reg) >= 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -108,13 +110,41 @@ impl<Stdout: Write> Emulator<Stdout> {
                 self.writeln();
                 ControlFlow::Continue
             },
+            Instruction::F2(F2Opcode::Add, dest, src1, src2) => {
+                let result = self.load_reg(src1) + self.load_reg(src2);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F2(F2Opcode::Sub, dest, src1, src2) => {
+                let result = self.load_reg(src1) - self.load_reg(src2);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F2(F2Opcode::Mul, dest, src1, src2) => {
+                let result = self.load_reg(src1) * self.load_reg(src2);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F2(F2Opcode::Div, dest, src1, src2) => {
+                let result = self.load_reg(src1) / self.load_reg(src2);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
             Instruction::F2(F2Opcode::Ret, _, _, Register::R0) => ControlFlow::Quit,
-            Instruction::F2(F2Opcode::Ret, _, _, dest) => todo!(),
-            Instruction::F2(F2Opcode::Wrd, _, src, _) => {
-                self.write(src);
+            Instruction::F2(F2Opcode::Ret, _, _, _dest) => todo!(),
+            Instruction::F2(F2Opcode::Rdd, dest, _, _) => {
+                self.read_to(dest);
                 ControlFlow::Continue
             }
-            Instruction::F2(opcode, r1, r2, r3) => todo!(),
+            Instruction::F2(F2Opcode::Wrd, _, src, _) => {
+                self.write_from(src);
+                ControlFlow::Continue
+            },
+            Instruction::F2(_, _, _, _) => todo!(),
             Instruction::F3(_, _) => unimplemented!("F3 instructions not yet implemented"),
         }
     }
@@ -131,13 +161,32 @@ impl<Stdout: Write> Emulator<Stdout> {
         self.registers[r.0 as usize] = val;
     }
 
-    fn write(&mut self, r: Register) {
+    fn load_cmp(&self, r: Register) -> i32 {
+        self.load_reg(r) as i32
+    }
+
+    fn read_to(&mut self, r: Register) {
+        let mut buf = String::new();
+        self.stdin.read_line(&mut buf).expect("failed to read integer");
+
+        let val = buf.trim().parse::<u32>().expect("invalid input");
+        self.store_reg(r, val);
+    }
+
+    fn write_from(&mut self, r: Register) {
         write!(self.stdout, "{}", self.load_reg(r)).expect("failed to write integer");
     }
 
     fn writeln(&mut self) {
         writeln!(self.stdout).expect("failed to write newline");
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlFlow {
+    Continue,
+    Branch(i16),
+    Quit,
 }
 
 
@@ -169,28 +218,5 @@ impl From<InstrDecodeError> for LoadError {
 impl From<io::Error> for LoadError {
     fn from(e: io::Error) -> Self {
         LoadError::IoFailure(e)
-    }
-}
-
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ControlFlow {
-    Continue,
-    Branch(i16),
-    Quit,
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanity_check() {
-        let stdout = io::stdout();
-        Emulator::load(
-            "/Users/lafrance/Dev/School/cs142b/tinyc/a.out",
-            stdout.lock(),
-        ).expect("failed to load emulator").start();
     }
 }
