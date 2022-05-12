@@ -6,9 +6,9 @@ use bytes::{BufMut, Bytes, BytesMut};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
-    F1(F1Opcode, Register, Register, u16),
+    F1(F1Opcode, Register, Register, i16),
     F2(F2Opcode, Register, Register, Register),
-    F3(F3Opcode, u32),
+    F3(F3Opcode, u32 /* this should be signed, but like... only kinda? */),
 }
 
 impl Instruction {
@@ -80,7 +80,7 @@ impl TryFrom<u32> for Instruction {
                 opcode,
                 Register::try_from(r1_bits as u8)?,
                 Register::try_from(r2_bits as u8)?,
-                bytes as u16,
+                bytes as i16,
             ))
         } else if let Ok(opcode) = F2Opcode::try_from(opcode_bits) {
             let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
