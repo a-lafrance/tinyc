@@ -70,7 +70,7 @@ impl TryFrom<u32> for Instruction {
     type Error = InstrDecodeError;
 
     fn try_from(bytes: u32) -> Result<Self, Self::Error> {
-        let opcode_bits = (bytes >> Instruction::OPCODE_MASK) as u8;
+        let opcode_bits = (bytes >> Instruction::OPCODE_SHIFT) as u8;
 
         if let Ok(opcode) = F1Opcode::try_from(opcode_bits) {
             let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
@@ -146,9 +146,7 @@ impl Error for InvalidOpcode { }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
-    Addi = 16, Subi, Muli, Divi, Cmpi = 21,
-    Ldw = 32, Pop = 34, Stw = 36, Psh = 38,
-    Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
+    Addi = 16, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
 }
 
 impl F1Opcode {
@@ -165,14 +163,6 @@ impl Display for F1Opcode {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             F1Opcode::Addi => write!(f, "addi"),
-            F1Opcode::Subi => write!(f, "subi"),
-            F1Opcode::Muli => write!(f, "muli"),
-            F1Opcode::Divi => write!(f, "divi"),
-            F1Opcode::Cmpi => write!(f, "cmpi"),
-            F1Opcode::Ldw => write!(f, "ldw"),
-            F1Opcode::Pop => write!(f, "pop"),
-            F1Opcode::Stw => write!(f, "stw"),
-            F1Opcode::Psh => write!(f, "psh"),
             F1Opcode::Beq => write!(f, "beq"),
             F1Opcode::Bne => write!(f, "bne"),
             F1Opcode::Blt => write!(f, "blt"),
@@ -190,14 +180,6 @@ impl TryFrom<u8> for F1Opcode {
     fn try_from(bits: u8) -> Result<Self, Self::Error> {
         match bits {
             16 => Ok(F1Opcode::Addi),
-            17 => Ok(F1Opcode::Subi),
-            18 => Ok(F1Opcode::Muli),
-            19 => Ok(F1Opcode::Divi),
-            21 => Ok(F1Opcode::Cmpi),
-            32 => Ok(F1Opcode::Ldw),
-            34 => Ok(F1Opcode::Pop),
-            36 => Ok(F1Opcode::Stw),
-            38 => Ok(F1Opcode::Psh),
             40 => Ok(F1Opcode::Beq),
             41 => Ok(F1Opcode::Bne),
             42 => Ok(F1Opcode::Blt),
@@ -214,7 +196,7 @@ impl TryFrom<u8> for F1Opcode {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F2Opcode {
-    Add, Sub, Mul, Div, Cmp = 5, Ldx = 33, Stx = 37, Ret = 49, Rdd = 50, Wrd,
+    Add, Sub, Mul, Div, Cmp = 5, Ret = 49, Rdd = 50, Wrd,
 }
 
 impl F2Opcode {
@@ -231,8 +213,6 @@ impl Display for F2Opcode {
             F2Opcode::Mul => write!(f, "mul"),
             F2Opcode::Div => write!(f, "div"),
             F2Opcode::Cmp => write!(f, "cmp"),
-            F2Opcode::Ldx => write!(f, "ldx"),
-            F2Opcode::Stx => write!(f, "stx"),
             F2Opcode::Ret => write!(f, "ret"),
             F2Opcode::Rdd => write!(f, "rdd"),
             F2Opcode::Wrd => write!(f, "wrd"),
@@ -250,8 +230,6 @@ impl TryFrom<u8> for F2Opcode {
             2 => Ok(F2Opcode::Mul),
             3 => Ok(F2Opcode::Div),
             5 => Ok(F2Opcode::Cmp),
-            33 => Ok(F2Opcode::Ldx),
-            37 => Ok(F2Opcode::Stx),
             49 => Ok(F2Opcode::Ret),
             50 => Ok(F2Opcode::Rdd),
             51 => Ok(F2Opcode::Wrd),
