@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 use bytes::{BufMut, Bytes, BytesMut};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -15,8 +18,9 @@ impl Instruction {
     const R1_SHIFT: u8 = 21;
     const R2_SHIFT: u8 = 16;
 
-    const REG_MASK: u32 = 0x1F;
     const OPCODE_MASK: u32 = 0x3F;
+    const REG_MASK: u32 = 0x1F;
+    const F3_IMM_MASK: u32 = 0x03FFFFFF;
 
     pub fn as_bytes(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(Instruction::INSTR_LEN);
@@ -37,7 +41,8 @@ impl Instruction {
             },
 
             Instruction::F3(opcode, imm) => {
-                ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT) | (imm & 0x03FFFFFF)
+                ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
+                    | (imm & Instruction::F3_IMM_MASK)
             },
         };
 
@@ -61,7 +66,84 @@ impl Display for Instruction {
     }
 }
 
+impl TryFrom<u32> for Instruction {
+    type Error = InstrDecodeError;
 
+    fn try_from(bytes: u32) -> Result<Self, Self::Error> {
+        let opcode_bits = (bytes >> Instruction::OPCODE_MASK) as u8;
+
+        if let Ok(opcode) = F1Opcode::try_from(opcode_bits) {
+            let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
+            let r2_bits = (bytes >> Instruction::R2_SHIFT) & Instruction::REG_MASK;
+
+            Ok(Instruction::F1(
+                opcode,
+                Register::try_from(r1_bits as u8)?,
+                Register::try_from(r2_bits as u8)?,
+                bytes as u16,
+            ))
+        } else if let Ok(opcode) = F2Opcode::try_from(opcode_bits) {
+            let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
+            let r2_bits = (bytes >> Instruction::R2_SHIFT) & Instruction::REG_MASK;
+            let r3_bits = bytes & Instruction::REG_MASK;
+
+            Ok(Instruction::F2(
+                opcode,
+                Register::try_from(r1_bits as u8)?,
+                Register::try_from(r2_bits as u8)?,
+                Register::try_from(r3_bits as u8)?,
+            ))
+        } else if let Ok(opcode) = F3Opcode::try_from(opcode_bits) {
+            Ok(Instruction::F3(opcode, bytes & Instruction::F3_IMM_MASK))
+        } else {
+            Err(InvalidOpcode(opcode_bits).into())
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstrDecodeError {
+    InvalidOpcode(InvalidOpcode),
+    InvalidReg(InvalidReg),
+}
+
+impl Display for InstrDecodeError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            InstrDecodeError::InvalidOpcode(e) => write!(f, "{}", e),
+            InstrDecodeError::InvalidReg(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl Error for InstrDecodeError { }
+
+impl From<InvalidOpcode> for InstrDecodeError {
+    fn from(e: InvalidOpcode) -> Self {
+        InstrDecodeError::InvalidOpcode(e)
+    }
+}
+
+impl From<InvalidReg> for InstrDecodeError {
+    fn from(e: InvalidReg) -> Self {
+        InstrDecodeError::InvalidReg(e)
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidOpcode(u8);
+
+impl Display for InvalidOpcode {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "invalid opcode '{}'", self.0)
+    }
+}
+
+impl Error for InvalidOpcode { }
+
+
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
     Addi = 16, Subi, Muli, Divi, Cmpi = 21,
@@ -102,7 +184,34 @@ impl Display for F1Opcode {
     }
 }
 
+impl TryFrom<u8> for F1Opcode {
+    type Error = InvalidOpcode;
 
+    fn try_from(bits: u8) -> Result<Self, Self::Error> {
+        match bits {
+            16 => Ok(F1Opcode::Addi),
+            17 => Ok(F1Opcode::Subi),
+            18 => Ok(F1Opcode::Muli),
+            19 => Ok(F1Opcode::Divi),
+            21 => Ok(F1Opcode::Cmpi),
+            32 => Ok(F1Opcode::Ldw),
+            34 => Ok(F1Opcode::Pop),
+            36 => Ok(F1Opcode::Stw),
+            38 => Ok(F1Opcode::Psh),
+            40 => Ok(F1Opcode::Beq),
+            41 => Ok(F1Opcode::Bne),
+            42 => Ok(F1Opcode::Blt),
+            43 => Ok(F1Opcode::Bge),
+            44 => Ok(F1Opcode::Ble),
+            45 => Ok(F1Opcode::Bgt),
+            53 => Ok(F1Opcode::Wrl),
+            other => Err(InvalidOpcode(other)),
+        }
+    }
+}
+
+
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F2Opcode {
     Add, Sub, Mul, Div, Cmp = 5, Ldx = 33, Stx = 37, Ret = 49, Rdd = 50, Wrd,
@@ -131,7 +240,28 @@ impl Display for F2Opcode {
     }
 }
 
+impl TryFrom<u8> for F2Opcode {
+    type Error = InvalidOpcode;
 
+    fn try_from(bits: u8) -> Result<Self, Self::Error> {
+        match bits {
+            0 => Ok(F2Opcode::Add),
+            1 => Ok(F2Opcode::Sub),
+            2 => Ok(F2Opcode::Mul),
+            3 => Ok(F2Opcode::Div),
+            5 => Ok(F2Opcode::Cmp),
+            33 => Ok(F2Opcode::Ldx),
+            37 => Ok(F2Opcode::Stx),
+            49 => Ok(F2Opcode::Ret),
+            50 => Ok(F2Opcode::Rdd),
+            51 => Ok(F2Opcode::Wrd),
+            other => Err(InvalidOpcode(other)),
+        }
+    }
+}
+
+
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F3Opcode {
     Jsr = 48
@@ -151,11 +281,23 @@ impl Display for F3Opcode {
     }
 }
 
+impl TryFrom<u8> for F3Opcode {
+    type Error = InvalidOpcode;
+
+    fn try_from(bits: u8) -> Result<Self, Self::Error> {
+        match bits {
+            48 => Ok(F3Opcode::Jsr),
+            other => Err(InvalidOpcode(other)),
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Register(pub u8);
 
 impl Register {
+    pub const N_REGS: usize = 32;
     pub const R0: Register = Register(0);
     pub const RCMP: Register = Register(27);
     pub const RRET: Register = Register(31);
@@ -164,5 +306,27 @@ impl Register {
 impl Display for Register {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "R{}", self.0)
+    }
+}
+
+impl TryFrom<u8> for Register {
+    type Error = InvalidReg;
+
+    fn try_from(bits: u8) -> Result<Self, Self::Error> {
+        if (bits as usize) < Register::N_REGS {
+            Ok(Register(bits))
+        } else {
+            Err(InvalidReg(bits))
+        }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidReg(u8);
+
+impl Display for InvalidReg {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "invalid register number {}", self.0)
     }
 }
