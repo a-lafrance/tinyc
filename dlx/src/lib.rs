@@ -1,6 +1,7 @@
 pub mod isa;
 
 use std::{
+    cmp::Ordering,
     fmt::{self, Display, Formatter},
     error::Error,
     fs::File,
@@ -136,12 +137,10 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 ControlFlow::Continue
             },
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
-                let result = if lhs < rhs {
-                    0
-                } else if lhs > rhs {
-                    2
-                } else {
-                    1
+                let result = match lhs.cmp(&rhs) {
+                    Ordering::Less => 0,
+                    Ordering::Equal => 1,
+                    Ordering::Greater => 2,
                 };
                 self.store_reg(dest, result);
 
@@ -177,9 +176,6 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn read_to(&mut self, r: Register) {
-        write!(self.stdout, "> ").unwrap();
-        self.stdout.flush().unwrap();
-
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
