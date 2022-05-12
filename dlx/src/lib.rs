@@ -43,6 +43,7 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
         })
     }
 
+    // TODO: return some kind of result/exit status
     pub fn start(&mut self) {
         loop {
             match self.exec_current_instr() {
