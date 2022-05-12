@@ -32,9 +32,13 @@ Roadmap for goals to accomplish this quarter:
     - [ ] Graph
   - [ ] Register allocation
   - [ ] Codegen
+  - [ ] End to end
 
 ### Should Have
 - [x] Constant propagation
+- [ ] Custom DLX simulator
+    * Done in Rust
+    * May require converting to cargo workspace
 - [ ] Config levels
   * Just the general idea of providing a way to opt in or out of certain advanced features
   * Mainly useful for offering a "standard" mode which enables exactly the set of features required for CS 142B, and then other mode(s) for advanced stuff
