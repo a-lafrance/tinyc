@@ -46,7 +46,7 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
     pub fn start(&mut self) {
         loop {
             match self.exec_current_instr() {
-                ControlFlow::Continue => self.pc += 1,
+                ControlFlow::Continue => (),
                 ControlFlow::Branch(offset) => {
                     let pc = &mut (self.pc as isize);
                     *pc += offset as isize;
@@ -57,7 +57,7 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn exec_current_instr(&mut self) -> ControlFlow {
-        match self.current_instr() {
+        match self.fetch_instr() {
             Instruction::F1(F1Opcode::Addi, r1, r2, imm) => {
                 let result = (self.load_reg(r2) as i64 + imm as i64) as u32;
                 self.store_reg(r1, result);
@@ -65,42 +65,42 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
                 ControlFlow::Continue
             },
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) == 0 {
+                if self.load_reg(cmp_reg) == 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) != 0 {
+                if self.load_reg(cmp_reg) != 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Ble, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) <= 0 {
+                if self.load_reg(cmp_reg) <= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bgt, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) > 0 {
+                if self.load_reg(cmp_reg) > 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) < 0 {
+                if self.load_reg(cmp_reg) < 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
             },
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
-                if self.load_cmp(cmp_reg) >= 0 {
+                if self.load_reg(cmp_reg) >= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -134,6 +134,18 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
 
                 ControlFlow::Continue
             },
+            Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
+                let result = if lhs < rhs {
+                    0
+                } else if lhs > rhs {
+                    2
+                } else {
+                    1
+                };
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
             Instruction::F2(F2Opcode::Ret, _, _, Register::R0) => ControlFlow::Quit,
             Instruction::F2(F2Opcode::Ret, _, _, _dest) => todo!(),
             Instruction::F2(F2Opcode::Rdd, dest, _, _) => {
@@ -144,13 +156,15 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.write_from(src);
                 ControlFlow::Continue
             },
-            Instruction::F2(_, _, _, _) => todo!(),
             Instruction::F3(_, _) => unimplemented!("F3 instructions not yet implemented"),
         }
     }
 
-    fn current_instr(&self) -> Instruction {
-        self.instr_mem[self.pc]
+    fn fetch_instr(&mut self) -> Instruction {
+        let instr = self.instr_mem[self.pc];
+        self.pc += 1;
+
+        instr
     }
 
     fn load_reg(&self, r: Register) -> u32 {
@@ -161,11 +175,10 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
         self.registers[r.0 as usize] = val;
     }
 
-    fn load_cmp(&self, r: Register) -> i32 {
-        self.load_reg(r) as i32
-    }
-
     fn read_to(&mut self, r: Register) {
+        write!(self.stdout, "> ").unwrap();
+        self.stdout.flush().unwrap();
+
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
