@@ -1,5 +1,3 @@
-mod isa;
-
 use std::{
     collections::{HashMap},
     io::{BufWriter, Write},
@@ -9,7 +7,7 @@ use crate::ir::{
     visit::{self, IrVisitor},
     IrStore,
 };
-use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, Register};
+use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
 pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
     // for each body:
@@ -28,14 +26,18 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
 
 // my simple crappy attempt at register allocation for now:
     // R27 is the condition register -- condition results get stored there
+        // TODO: update IR to:
+            // store cmp result in ssa value
+            // branch based on ssa value
+            // allocate these values into registers
     // for each value V, R(V) is its designated register
     // yes, this means you can only have 26 values total in the program
         // this will be fixed later
 struct DlxCodegen<'b> {
     body: &'b Body,
     buffer: Vec<Instruction>,
-    labels: HashMap<BasicBlock, u16>, // labels bb number to addr of first instruction
-    next_instr_addr: u16, // addr in words of next instr
+    labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
+    next_instr_addr: i16, // addr in words of next instr
     unresolved_branches: Vec<UnresolvedBranch>,
     cutoff_point: Option<BasicBlock>,
 }
@@ -65,11 +67,11 @@ impl<'b> DlxCodegen<'b> {
         self.labels.insert(bb, self.next_instr_addr);
     }
 
-    fn label_for(&self, bb: BasicBlock) -> Option<u16> {
+    fn label_for(&self, bb: BasicBlock) -> Option<i16> {
         self.labels.get(&bb).copied()
     }
 
-    fn branch_offset(&self, src_addr: u16, dest: BasicBlock) -> Option<u16> {
+    fn branch_offset(&self, src_addr: i16, dest: BasicBlock) -> Option<i16> {
         self.label_for(dest).map(|l| l - src_addr)
     }
 
@@ -77,7 +79,7 @@ impl<'b> DlxCodegen<'b> {
         Register((val.0 + 1) as u8)
     }
 
-    fn mark_unresolved_branch(&mut self, ip: usize, addr: u16, dest: BasicBlock) {
+    fn mark_unresolved_branch(&mut self, ip: usize, addr: i16, dest: BasicBlock) {
         self.unresolved_branches.push(UnresolvedBranch { ip, addr, dest });
     }
 
@@ -188,7 +190,7 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
         // TODO: may use immediate instructions instead of actually allocating constants
-        self.emit_instr(Instruction::F1(F1Opcode::Addi, self.reg_for_val(dest), Register::R0, const_val as u16));
+        self.emit_instr(Instruction::F1(F1Opcode::Addi, self.reg_for_val(dest), Register::R0, const_val as i16));
     }
 
     fn visit_end_instr(&mut self) {
@@ -233,6 +235,6 @@ impl IrVisitor for DlxCodegen<'_> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct UnresolvedBranch {
     pub ip: usize,
-    pub addr: u16,
+    pub addr: i16,
     pub dest: BasicBlock,
 }

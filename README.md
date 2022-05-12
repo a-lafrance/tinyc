@@ -36,7 +36,7 @@ Roadmap for goals to accomplish this quarter:
 
 ### Should Have
 - [x] Constant propagation
-- [ ] Custom DLX simulator
+- [x] Custom DLX simulator
     * Done in Rust
     * May require converting to cargo workspace
 - [ ] Config levels

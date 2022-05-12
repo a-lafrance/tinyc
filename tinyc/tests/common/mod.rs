@@ -1,4 +1,5 @@
-use std::{fs, process::{Command, Output}};
+use std::{fs, thread};
+use dlx::Emulator;
 use tinyc::driver;
 use uuid::Uuid;
 
@@ -16,16 +17,14 @@ impl TestRun {
         TestRun { binary }
     }
 
-    pub fn check_output(&self, expected: &str) {
-        // python3 rsrc/dlx.py <binary>
-        let run_result = Command::new("python3")
-            .args(["rsrc/dlx.py", &self.binary])
-            .output()
-            .expect("failed to execute test binary");
-        let output = String::from_utf8(run_result.stdout)
-            .expect("invalid stdout received from test binary");
+    pub fn run(self, input: String, expected: &str) {
+        // TODO: some kind of timeout mechanism
+        let mut output_stream = Vec::new();
+        Emulator::load(&self.binary, input.as_bytes(), &mut output_stream)
+            .expect("failed to start emulator")
+            .start();
 
-        assert!(run_result.status.success());
+        let output = String::from_utf8(output_stream).expect("invalid output from binary");
         assert_eq!(&output, expected);
     }
 }
