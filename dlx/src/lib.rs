@@ -8,15 +8,15 @@ use std::{
 };
 use self::isa::{F1Opcode, F2Opcode, Instruction, InstrDecodeError, Register};
 
-pub struct Emulator<Stdin: BufRead, Stdout: Write> {
+pub struct Emulator<Stdin: Read, Stdout: Write> {
     registers: [u32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
     pc: usize,
-    stdin: Stdin,
+    stdin: BufReader<Stdin>,
     stdout: Stdout,
 }
 
-impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
+impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout) -> Result<Emulator<Stdin, Stdout>, LoadError> {
         // open file/bufreader for file
         let f = File::open(prog_file)?;
@@ -38,7 +38,7 @@ impl<Stdin: BufRead, Stdout: Write> Emulator<Stdin, Stdout> {
             registers: [0; Register::N_REGS],
             instr_mem,
             pc: 0,
-            stdin,
+            stdin: BufReader::new(stdin),
             stdout,
         })
     }

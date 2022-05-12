@@ -1,4 +1,4 @@
-use std::{fs, process::Command};
+use std::{fs, thread};
 use dlx::Emulator;
 use tinyc::driver;
 use uuid::Uuid;
@@ -17,12 +17,10 @@ impl TestRun {
         TestRun { binary }
     }
 
-    pub fn check_output(&self, expected: &str) {
+    pub fn run(self, input: String, expected: &str) {
+        // TODO: some kind of timeout mechanism
         let mut output_stream = Vec::new();
-
-        // TODO: timeout system
-            // maybe launch in separate thread?
-        Emulator::load(&self.binary, expected.as_bytes(), &mut output_stream)
+        Emulator::load(&self.binary, input.as_bytes(), &mut output_stream)
             .expect("failed to start emulator")
             .start();
 
