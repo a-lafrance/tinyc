@@ -6,6 +6,7 @@ use crate::{
     ast::{FactorOp, TermOp},
     utils::RelOp,
 };
+use dlx::isa::{F1Opcode, F2Opcode};
 
 
 #[derive(Debug)]
@@ -22,10 +23,10 @@ impl Body {
         }
     }
 
-    #[cfg(test)]
-    pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
-        Body { blocks, root }
-    }
+    // #[cfg(test)]
+    // pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
+    //     Body { blocks, root }
+    // }
 
     pub fn blocks(&self) -> &[BasicBlockData] {
         &self.blocks
@@ -213,6 +214,19 @@ impl From<RelOp> for BranchOpcode {
     }
 }
 
+impl From<BranchOpcode> for F1Opcode {
+    fn from(opcode: BranchOpcode) -> Self {
+        match opcode {
+            BranchOpcode::Br | BranchOpcode::Beq => F1Opcode::Beq,
+            BranchOpcode::Bne => F1Opcode::Bne,
+            BranchOpcode::Bgt => F1Opcode::Bgt,
+            BranchOpcode::Bge => F1Opcode::Bge,
+            BranchOpcode::Blt => F1Opcode::Blt,
+            BranchOpcode::Ble => F1Opcode::Ble,
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StoredBinaryOpcode {
@@ -248,6 +262,18 @@ impl From<TermOp> for StoredBinaryOpcode {
     }
 }
 
+impl From<StoredBinaryOpcode> for F2Opcode {
+    fn from(opcode: StoredBinaryOpcode) -> Self {
+        match opcode {
+            StoredBinaryOpcode::Add => F2Opcode::Add,
+            StoredBinaryOpcode::Sub => F2Opcode::Sub,
+            StoredBinaryOpcode::Mul => F2Opcode::Mul,
+            StoredBinaryOpcode::Div => F2Opcode::Div,
+            StoredBinaryOpcode::Phi => todo!(),
+        }
+    }
+}
+
 
 // wrapper around interned index
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -276,14 +302,14 @@ impl BasicBlockData {
         BasicBlockData::from(edge, bb.val_table.clone(), Some(dominator))
     }
 
-    #[cfg(test)]
-    pub fn with(
-        body: Vec<Instruction>,
-        edge: ControlFlowEdge,
-        dominator: Option<BasicBlock>
-    ) -> BasicBlockData {
-        BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
-    }
+    // #[cfg(test)]
+    // pub fn with(
+    //     body: Vec<Instruction>,
+    //     edge: ControlFlowEdge,
+    //     dominator: Option<BasicBlock>
+    // ) -> BasicBlockData {
+    //     BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
+    // }
 
     fn from(edge: ControlFlowEdge, val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {

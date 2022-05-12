@@ -1,4 +1,4 @@
-use std::{fs, process::{Command, Output}};
+use std::{fs, process::Command};
 use tinyc::driver;
 use uuid::Uuid;
 

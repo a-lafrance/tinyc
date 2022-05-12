@@ -1,5 +1,3 @@
-mod isa;
-
 use std::{
     collections::{HashMap},
     io::{BufWriter, Write},
@@ -9,7 +7,7 @@ use crate::ir::{
     visit::{self, IrVisitor},
     IrStore,
 };
-use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, Register};
+use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
 pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
     // for each body:

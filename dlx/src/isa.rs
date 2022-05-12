@@ -1,6 +1,5 @@
 use std::fmt::{self, Display, Formatter};
 use bytes::{BufMut, Bytes, BytesMut};
-use crate::ir::isa::{BranchOpcode, StoredBinaryOpcode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -103,19 +102,6 @@ impl Display for F1Opcode {
     }
 }
 
-impl From<BranchOpcode> for F1Opcode {
-    fn from(opcode: BranchOpcode) -> Self {
-        match opcode {
-            BranchOpcode::Br | BranchOpcode::Beq => F1Opcode::Beq,
-            BranchOpcode::Bne => F1Opcode::Bne,
-            BranchOpcode::Bgt => F1Opcode::Bgt,
-            BranchOpcode::Bge => F1Opcode::Bge,
-            BranchOpcode::Blt => F1Opcode::Blt,
-            BranchOpcode::Ble => F1Opcode::Ble,
-        }
-    }
-}
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F2Opcode {
@@ -141,18 +127,6 @@ impl Display for F2Opcode {
             F2Opcode::Ret => write!(f, "ret"),
             F2Opcode::Rdd => write!(f, "rdd"),
             F2Opcode::Wrd => write!(f, "wrd"),
-        }
-    }
-}
-
-impl From<StoredBinaryOpcode> for F2Opcode {
-    fn from(opcode: StoredBinaryOpcode) -> Self {
-        match opcode {
-            StoredBinaryOpcode::Add => F2Opcode::Add,
-            StoredBinaryOpcode::Sub => F2Opcode::Sub,
-            StoredBinaryOpcode::Mul => F2Opcode::Mul,
-            StoredBinaryOpcode::Div => F2Opcode::Div,
-            StoredBinaryOpcode::Phi => todo!(),
         }
     }
 }
