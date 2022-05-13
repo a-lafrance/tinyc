@@ -3,6 +3,12 @@ The Tiny compiler
 
 Made for UCI CS 142B; actual readme to come
 
+## Utility Scripts
+The `justfile` provides a few utility scripts to make life easier:
+* `build`: Invoke the compiler to automatically build a DLX binary for a source file
+* `emu`: Run the DLX emulator for a binary (i.e. without having to worry about all the flags)
+* `e2e`: Automatically build and run a DLX binary (i.e. automate the whole end-to-end pipeline)
+
 ## Roadmap
 Roadmap for goals to accomplish this quarter:
 

@@ -81,6 +81,7 @@ name = "dlx"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "clap",
 ]
 
 [[package]]
