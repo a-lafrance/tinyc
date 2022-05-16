@@ -140,7 +140,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn result_val(&self) -> Option<Value> {
+    #[cfg(regalloc)] pub fn result_val(&self) -> Option<Value> {
         match self {
             Instruction::Const(_, dest) => Some(*dest),
             Instruction::Read(dest) => Some(*dest),
@@ -151,7 +151,7 @@ impl Instruction {
 
     // We could do some iterator magic here, but that would require an extra allocation anyway
     // because the iterator types are heterogeneous, so it's just easier to return a vector
-    pub fn operands(&self) -> Vec<Value> {
+    #[cfg(regalloc)] pub fn operands(&self) -> Vec<Value> {
         match self {
             Instruction::StoredBinaryOp(_, src1, src2, _) => vec![*src1, *src2],
             Instruction::Write(src) => vec![*src],
@@ -378,7 +378,7 @@ impl BasicBlockData {
         self.body.is_empty()
     }
 
-    pub fn phis(&self) -> impl Iterator<Item = (Value, Value, Value)> + '_ {
+    #[cfg(regalloc)] pub fn phis(&self) -> impl Iterator<Item = (Value, Value, Value)> + '_ {
         self.body().iter().filter_map(|instr|
             match instr {
                 Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, src1, src2, dest) => Some((*src1, *src2, *dest)),
