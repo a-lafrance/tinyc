@@ -45,6 +45,7 @@ pub enum IndexableInstr {
     Sub(Value, Value),
     Mul(Value, Value),
     Div(Value, Value),
+    Cmp(Value, Value),
     Call(String),
 }
 

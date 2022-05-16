@@ -112,9 +112,9 @@ impl Body {
         self.set_edge_for_block(src, ControlFlowEdge::Fallthrough(dest))
     }
 
-    pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock, branch_type: BranchOpcode) {
+    pub fn connect_via_branch(&mut self, src: BasicBlock, dest: BasicBlock) {
         self.set_edge_for_block(src, ControlFlowEdge::Branch(dest));
-        self.push_instr(src, Instruction::Branch(branch_type, dest));
+        self.push_instr(src, Instruction::UnconditionalBranch(dest));
     }
 
     pub fn establish_dominance(&mut self, parent: BasicBlock, child: BasicBlock) {
@@ -124,16 +124,16 @@ impl Body {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
-    Branch(BranchOpcode, BasicBlock),
+    Branch(BranchOpcode, Value, BasicBlock),
     Call(String),
     Const(u32, Value),
-    Cmp(Value, Value),
     End,
     Mu(Value, CCLocation),
     Nop,
     Read(Value),
     Return,
-    StoredBinaryOp { opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value },
+    StoredBinaryOp(StoredBinaryOpcode, Value, Value, Value),
+    UnconditionalBranch(BasicBlock),
     Write(Value),
     Writeln,
 }
@@ -143,7 +143,7 @@ impl Instruction {
         match self {
             Instruction::Const(_, dest) => Some(*dest),
             Instruction::Read(dest) => Some(*dest),
-            Instruction::StoredBinaryOp { dest, .. } => Some(*dest),
+            Instruction::StoredBinaryOp(_, _, _, dest) => Some(*dest),
             Instruction::Mu(val, _) => Some(*val),
             _ => None,
         }
@@ -153,10 +153,10 @@ impl Instruction {
     // because the iterator types are heterogeneous, so it's just easier to return a vector
     pub fn operands(&self) -> Vec<Value> {
         match self {
-            Instruction::Cmp(lhs, rhs) => vec![*lhs, *rhs],
-            Instruction::StoredBinaryOp { src1, src2, .. } => vec![*src1, *src2],
+            Instruction::StoredBinaryOp(_, src1, src2, _) => vec![*src1, *src2],
             Instruction::Write(src) => vec![*src],
             Instruction::Mu(val, _) => vec![*val],
+            Instruction::Branch(_, cmp, _) => vec![*cmp],
             _ => vec![],
         }
     }
@@ -167,9 +167,8 @@ impl Display for Instruction {
         match self {
             Instruction::Call(func) => write!(f, "call {}", func),
             Instruction::Const(n, dest) => write!(f, "{} = const {}", dest, n),
-            Instruction::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
-            Instruction::Branch(opcode, dest) => write!(f, "{} {}", opcode, dest),
-            Instruction::StoredBinaryOp { opcode, src1, src2, dest } => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
+            Instruction::Branch(opcode, cmp, dest) => write!(f, "{} {}, {}", opcode, cmp, dest),
+            Instruction::StoredBinaryOp(opcode, src1, src2, dest) => write!(f, "{} = {} {}, {}", dest, opcode, src1, src2),
             Instruction::Read(dest) => write!(f, "{} = read", dest),
             Instruction::Return => write!(f, "ret"),
             Instruction::Write(src) => write!(f, "write {}", src),
@@ -177,6 +176,7 @@ impl Display for Instruction {
             Instruction::End => write!(f, "end"),
             Instruction::Nop => write!(f, "nop"),
             Instruction::Mu(val, loc) => write!(f, "mu {}, {}", val, loc),
+            Instruction::UnconditionalBranch(dest) => write!(f, "br {}", dest),
         }
     }
 }
@@ -184,13 +184,12 @@ impl Display for Instruction {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BranchOpcode {
-    Br, Beq, Bne, Bgt, Bge, Blt, Ble,
+    Beq, Bne, Bgt, Bge, Blt, Ble,
 }
 
 impl Display for BranchOpcode {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            BranchOpcode::Br => write!(f, "br"),
             BranchOpcode::Beq => write!(f, "beq"),
             BranchOpcode::Bne => write!(f, "bne"),
             BranchOpcode::Bgt => write!(f, "bgt"),
@@ -217,7 +216,7 @@ impl From<RelOp> for BranchOpcode {
 impl From<BranchOpcode> for F1Opcode {
     fn from(opcode: BranchOpcode) -> Self {
         match opcode {
-            BranchOpcode::Br | BranchOpcode::Beq => F1Opcode::Beq,
+            BranchOpcode::Beq => F1Opcode::Beq,
             BranchOpcode::Bne => F1Opcode::Bne,
             BranchOpcode::Bgt => F1Opcode::Bgt,
             BranchOpcode::Bge => F1Opcode::Bge,
@@ -230,7 +229,7 @@ impl From<BranchOpcode> for F1Opcode {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StoredBinaryOpcode {
-    Add, Sub, Mul, Div, Phi,
+    Add, Sub, Mul, Div, Cmp, Phi,
 }
 
 impl Display for StoredBinaryOpcode {
@@ -240,6 +239,7 @@ impl Display for StoredBinaryOpcode {
             StoredBinaryOpcode::Sub => write!(f, "sub"),
             StoredBinaryOpcode::Mul => write!(f, "mul"),
             StoredBinaryOpcode::Div => write!(f, "div"),
+            StoredBinaryOpcode::Cmp => write!(f, "cmp"),
             StoredBinaryOpcode::Phi => write!(f, "phi"),
         }
     }
@@ -269,6 +269,7 @@ impl From<StoredBinaryOpcode> for F2Opcode {
             StoredBinaryOpcode::Sub => F2Opcode::Sub,
             StoredBinaryOpcode::Mul => F2Opcode::Mul,
             StoredBinaryOpcode::Div => F2Opcode::Div,
+            StoredBinaryOpcode::Cmp => F2Opcode::Cmp,
             StoredBinaryOpcode::Phi => todo!(),
         }
     }
@@ -365,7 +366,7 @@ impl BasicBlockData {
     pub fn phis(&self) -> impl Iterator<Item = (Value, Value, Value)> + '_ {
         self.body().iter().filter_map(|instr|
             match instr {
-                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1, src2, dest } => Some((*src1, *src2, *dest)),
+                Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, src1, src2, dest) => Some((*src1, *src2, *dest)),
                 _ => None,
             }
         )
