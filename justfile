@@ -1,8 +1,8 @@
 default:
 	just -l
 
-emu BINARY:
-    cargo run -p dlx --features emu-cli --bin emu -- {{ BINARY }}
+emu BINARY *ARGS:
+    cargo run -p dlx --features emu-cli --bin emu -- {{ ARGS }} {{ BINARY }}
 
 build SRC *ARGS:
 	cargo run -p tinyc -- {{ ARGS }} {{ SRC }}

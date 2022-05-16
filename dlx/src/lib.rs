@@ -15,10 +15,11 @@ pub struct Emulator<Stdin: Read, Stdout: Write> {
     pc: usize,
     stdin: BufReader<Stdin>,
     stdout: Stdout,
+    quiet: bool,
 }
 
 impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
-    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout) -> Result<Emulator<Stdin, Stdout>, LoadError> {
+    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout, quiet: bool) -> Result<Emulator<Stdin, Stdout>, LoadError> {
         // open file/bufreader for file
         let f = File::open(prog_file)?;
         let mut reader = BufReader::new(f);
@@ -41,6 +42,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             pc: 0,
             stdin: BufReader::new(stdin),
             stdout,
+            quiet,
         })
     }
 
@@ -205,6 +207,11 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn read_to(&mut self, r: Register) {
+        if !self.quiet {
+            write!(self.stdout, "> ").unwrap();
+            self.stdout.flush().unwrap();
+        }
+        
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
