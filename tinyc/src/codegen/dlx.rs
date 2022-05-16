@@ -156,16 +156,12 @@ impl IrVisitor for DlxCodegen<'_> {
         }
     }
 
-    fn visit_branch_instr(&mut self, opcode: BranchOpcode, dest: BasicBlock) {
-        let comparator = match opcode {
-            BranchOpcode::Br => Register::R0,
-            _ => Register::RCMP,
-        };
+    fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
         let offset = self.branch_offset(self.next_instr_addr, dest);
 
         self.emit_instr(Instruction::F1(
             F1Opcode::from(opcode),
-            comparator,
+            self.reg_for_val(cmp),
             Register::R0,
             offset.unwrap_or(0), // either encode branch or fill with temporary value
         ));
@@ -177,15 +173,6 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_call_instr(&mut self, _func: &str) {
         todo!();
-    }
-
-    fn visit_cmp_instr(&mut self, lhs: Value, rhs: Value) {
-        self.emit_instr(Instruction::F2(
-            F2Opcode::Cmp,
-            Register::RCMP,
-            self.reg_for_val(lhs),
-            self.reg_for_val(rhs),
-        ));
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {

@@ -176,7 +176,7 @@ impl IrBodyGenerator {
             let phi_val = self.alloc_val();
             self.body.push_instr(
                 dest,
-                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, src1: val1, src2: val2, dest: phi_val }
+                Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, val1, val2, phi_val),
             );
 
             // update join block val table
@@ -197,6 +197,7 @@ impl IrBodyGenerator {
                 StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
                 StoredBinaryOpcode::Mul => Some(c1 * c2),
                 StoredBinaryOpcode::Div => Some(c1 / c2),
+                StoredBinaryOpcode::Cmp => None, // TODO: can do a different kind of optimization for cmp
                 StoredBinaryOpcode::Phi => None,
             }
         } else {
@@ -256,12 +257,7 @@ impl AstVisitor for IrBodyGenerator {
                         .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
                         .or_else(|| {
                             let result = self.alloc_val();
-                            let instr = Instruction::StoredBinaryOp {
-                                opcode,
-                                src1: lhs,
-                                src2: rhs,
-                                dest: result,
-                            };
+                            let instr = Instruction::StoredBinaryOp(opcode, lhs, rhs, result);
 
                             if let Some(ref mut cse_cache) = self.cse_cache {
                                 cse_cache.insert_instr(block, index_instr, result);
@@ -357,6 +353,7 @@ impl AstVisitor for IrBodyGenerator {
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
         // check condition in start basic block
         self.visit_relation(&if_stmt.condition);
+        let condition_val = self.last_val.expect("invariant violated: expected value for if statement condition");
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
         // fill new basic block for then
@@ -384,7 +381,7 @@ impl AstVisitor for IrBodyGenerator {
                 // connect then block to join block via branch
                 // connect else block to join block via fallthrough
                 // FIXME: this produces an extra branch instruction when the then path returns
-                self.body.connect_via_branch(then_end_bb, join_bb, BranchOpcode::Br);
+                self.body.connect_via_branch(then_end_bb, join_bb);
                 self.body.connect_via_fallthrough(else_end_bb, join_bb);
                 (else_bb, else_end_bb, Some(else_bb))
             },
@@ -400,7 +397,7 @@ impl AstVisitor for IrBodyGenerator {
         // connect start block to destination block (either join or else) via conditional branch
         let branch_opcode = BranchOpcode::from(if_stmt.condition.op.negated());
         self.body.set_edge_for_block(condition_bb, ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb));
-        self.body.push_instr(condition_bb, Instruction::Branch(branch_opcode, dest_bb));
+        self.body.push_instr(condition_bb, Instruction::Branch(branch_opcode, condition_val, dest_bb));
 
         // fast-forward to join block
         self.current_block = Some(join_bb);
@@ -420,26 +417,24 @@ impl AstVisitor for IrBodyGenerator {
                 let dest_val = self.alloc_val();
                 self.body.assign_in_bb(start_bb, var.clone(), dest_val);
 
-                (var, Instruction::StoredBinaryOp {
-                    opcode: StoredBinaryOpcode::Phi,
-                    src1: old_val,
-                    src2: Value(0),
-                    dest: dest_val
-                })
+                (
+                    var,
+                    Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, old_val, Value(0), dest_val),
+                )
             })
             .collect::<Vec<_>>();
 
         let body_bb = self.fill_basic_block_from(start_bb, start_bb);
         self.visit_block(&loop_stmt.body);
 
-        self.body.connect_via_branch(body_bb, start_bb, BranchOpcode::Br);
+        self.body.connect_via_branch(body_bb, start_bb);
         let post_bb = self.make_basic_block_from(start_bb, start_bb);
 
         self.current_block = Some(start_bb);
 
         for (var, mut phi) in phis.into_iter() {
             match phi {
-                Instruction::StoredBinaryOp { opcode: StoredBinaryOpcode::Phi, ref mut src2, .. } => *src2 = self.body
+                Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, _, ref mut src2, _) => *src2 = self.body
                     .val_in_bb(body_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
@@ -449,10 +444,13 @@ impl AstVisitor for IrBodyGenerator {
         }
 
         self.visit_relation(&loop_stmt.condition);
+        let condition_val = self.last_val.expect("invariant violated: value expected for loop condition");
+        let opcode = BranchOpcode::from(loop_stmt.condition.op.negated());
+
         self.body.set_edge_for_block(start_bb, ControlFlowEdge::Loop(body_bb, post_bb));
         self.body.push_instr(
             start_bb,
-            Instruction::Branch(BranchOpcode::from(loop_stmt.condition.op.negated()), post_bb),
+            Instruction::Branch(opcode, condition_val, post_bb),
         );
         self.current_block = Some(post_bb);
     }
@@ -464,9 +462,11 @@ impl AstVisitor for IrBodyGenerator {
         self.visit_expr(&relation.rhs);
         let rhs = self.last_val.expect("invariant violated: expected expr");
 
+        let result = self.alloc_val();
+        self.last_val = Some(result);
         self.body.push_instr(
             self.current_block.expect("invariant violated: func call must be in block"),
-            Instruction::Cmp(lhs, rhs)
+            Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, lhs, rhs, result)
         );
     }
 
@@ -507,12 +507,7 @@ impl AstVisitor for IrBodyGenerator {
                         .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
                         .or_else(|| {
                             let result = self.alloc_val();
-                            let instr = Instruction::StoredBinaryOp {
-                                opcode,
-                                src1: lhs,
-                                src2: rhs,
-                                dest: result,
-                            };
+                            let instr = Instruction::StoredBinaryOp(opcode, lhs, rhs, result);
 
                             if let Some(ref mut cse_cache) = self.cse_cache {
                                 cse_cache.insert_instr(block, index_instr, result);
