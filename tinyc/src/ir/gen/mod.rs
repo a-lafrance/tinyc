@@ -6,6 +6,7 @@ use crate::{
         Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Stmt, Term,
         visit::{self, AstVisitor},
     },
+    driver::opt::OptConfig,
     utils::{Builtin, Keyword},
 };
 use self::{
@@ -14,7 +15,6 @@ use self::{
 };
 use super::{
     isa::{BasicBlock, Body, BranchOpcode, CCLocation, ControlFlowEdge, Instruction, StoredBinaryOpcode, Value},
-    opt::OptConfig,
     IrStore,
 };
 

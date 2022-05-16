@@ -2,20 +2,23 @@ use std::{
     collections::{HashMap},
     io::{BufWriter, Write},
 };
-use crate::ir::{
-    isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, ControlFlowEdge, StoredBinaryOpcode, Value},
-    visit::{self, IrVisitor},
-    IrStore,
+use crate::{
+    driver::opt::OptConfig,
+    ir::{
+        isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, ControlFlowEdge, StoredBinaryOpcode, Value},
+        visit::{self, IrVisitor},
+        IrStore,
+    },
 };
 use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
-pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
+pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
     // for each body:
         // traverse the cfg for the body, generating instructions for each bb in order
 
     // but for now, just main
     let body = ir.main_body().unwrap();
-    let mut gen = DlxCodegen::new(&body);
+    let mut gen = DlxCodegen::new(&body, opt);
     gen.visit_body(&body);
 
     for instr in gen.into_buffer().into_iter() {
@@ -36,10 +39,11 @@ struct DlxCodegen<'b> {
     unresolved_branches: Vec<UnresolvedBranch>,
     cutoff_point: Option<BasicBlock>,
     known_consts: HashMap<Value, u32>,
+    opt: OptConfig,
 }
 
 impl<'b> DlxCodegen<'b> {
-    pub fn new(body: &'b Body) -> DlxCodegen<'b> {
+    pub fn new(body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
         DlxCodegen {
             body,
             buffer: Vec::new(),
@@ -48,6 +52,7 @@ impl<'b> DlxCodegen<'b> {
             unresolved_branches: Vec::new(),
             cutoff_point: None,
             known_consts: HashMap::new(),
+            opt,
         }
     }
 
@@ -104,6 +109,10 @@ impl<'b> DlxCodegen<'b> {
         src1: Value,
         src2: Value,
     ) -> Option<(F1Opcode, Value, i16)> {
+        if !self.opt.instr_select {
+            return None;
+        }
+
         let opcode = F1Opcode::try_from(opcode);
 
         match opcode {

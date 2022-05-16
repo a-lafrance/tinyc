@@ -32,7 +32,8 @@ Roadmap for goals to accomplish this quarter:
   - [ ] IR generation
   - [ ] CSE
     - [ ] Domination hierarchy construction
-  - [ ] Constant propagation (make sure it _specifically_ works)
+  - [ ] Constant propagation
+  - [ ] Instruction selection
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
@@ -47,7 +48,7 @@ Roadmap for goals to accomplish this quarter:
     * May require converting to cargo workspace
 - [ ] More optimizations
   - [x] Dead code elimination
-  - [ ] Basic (very basic) instruction selection
+  - [x] Basic (very basic) instruction selection
     * Meaning basically just prefer immediate instructions when exactly one operand is a constant
     * IMPORTANT: you may reorder operands to achieve this ONLY IF the operation is commutative
   - [ ] "Dead constant elimination"

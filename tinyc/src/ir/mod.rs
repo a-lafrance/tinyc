@@ -1,15 +1,13 @@
 pub mod fmt;
 mod gen;
 pub mod isa;
-pub mod opt;
 pub mod visit;
 
 use std::collections::HashMap;
-use crate::{ast::Computation, utils::Keyword};
+use crate::{ast::Computation, driver::opt::OptConfig, utils::Keyword};
 use self::{
     gen::IrGenerator,
     isa::Body,
-    opt::OptConfig,
 };
 
 // NOTE: constant folding/propagation notes
