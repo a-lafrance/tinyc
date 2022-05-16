@@ -10,7 +10,7 @@ use self::{
     isa::Body,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct IrStore {
     bodies: HashMap<String, Body>,
 }
