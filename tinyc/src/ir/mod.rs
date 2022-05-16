@@ -1,6 +1,7 @@
 pub mod fmt;
 mod gen;
 pub mod isa;
+pub mod opt;
 pub mod visit;
 
 use std::collections::HashMap;
@@ -8,6 +9,7 @@ use crate::{ast::Computation, utils::Keyword};
 use self::{
     gen::IrGenerator,
     isa::Body,
+    opt::OptConfig,
 };
 
 // NOTE: constant folding/propagation notes
@@ -32,6 +34,10 @@ impl IrStore {
         IrStore { bodies: HashMap::new() }
     }
 
+    pub fn from_ast(ast: Computation, opt: OptConfig) -> IrStore {
+        IrGenerator::gen(&ast, opt)
+    }
+
     // NOTE: this is TEMPORARY
     pub fn main_body(&mut self) -> Option<Body> {
         self.bodies.remove(&Keyword::Main.to_string())
@@ -43,11 +49,5 @@ impl IrStore {
 
     pub fn register(&mut self, name: String, body: Body) {
         self.bodies.insert(name, body);
-    }
-}
-
-impl From<Computation> for IrStore {
-    fn from(comp: Computation) -> IrStore {
-        IrGenerator::gen(&comp)
     }
 }
