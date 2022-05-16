@@ -251,16 +251,16 @@ impl AstVisitor for IrBodyGenerator {
                 Some(result) => self.load_const(result),
                 None => {
                     let block = self.current_block.expect("invariant violated: expr must be in block");
-                    let index_instr = IndexableInstr::from_term_op(*op, lhs, rhs);
+                    let cse_index = IndexableInstr::from_term_op(*op, lhs, rhs);
 
                     self.last_val = self.cse_cache.as_ref()
-                        .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
+                        .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index))
                         .or_else(|| {
                             let result = self.alloc_val();
                             let instr = Instruction::StoredBinaryOp(opcode, lhs, rhs, result);
 
                             if let Some(ref mut cse_cache) = self.cse_cache {
-                                cse_cache.insert_instr(block, index_instr, result);
+                                cse_cache.insert_instr(block, cse_index, result);
                             }
 
                             self.body.push_instr(block, instr);
@@ -295,10 +295,10 @@ impl AstVisitor for IrBodyGenerator {
             None => {
                 // push all args
                 let block = self.current_block.expect("invariant violated: must be in block");
-                let index_instr = IndexableInstr::Call(call.name.clone());
+                let cse_index = IndexableInstr::Call(call.name.clone());
 
                 let dest_val = match self.cse_cache.as_ref()
-                    .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr)) {
+                    .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index)) {
                         Some(val) => val,
                         None => {
                             for (i, arg) in call.args.iter().enumerate() {
@@ -317,7 +317,7 @@ impl AstVisitor for IrBodyGenerator {
                             self.body.push_instr(block, Instruction::Mu(dest_val, CCLocation::RetVal));
 
                             if let Some(ref mut cse_cache) = self.cse_cache {
-                                cse_cache.insert_instr(block, index_instr, dest_val);
+                                cse_cache.insert_instr(block, cse_index, dest_val);
                             }
 
                             dest_val
@@ -462,12 +462,23 @@ impl AstVisitor for IrBodyGenerator {
         self.visit_expr(&relation.rhs);
         let rhs = self.last_val.expect("invariant violated: expected expr");
 
-        let result = self.alloc_val();
-        self.last_val = Some(result);
-        self.body.push_instr(
-            self.current_block.expect("invariant violated: func call must be in block"),
-            Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, lhs, rhs, result)
-        );
+        let block = self.current_block.expect("invariant violated: relation must be in block");
+        let cse_index = IndexableInstr::Cmp(lhs, rhs);
+
+        self.last_val = self.cse_cache.as_ref()
+            .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index))
+            .or_else(|| {
+                let result = self.alloc_val();
+                let instr = Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, lhs, rhs, result);
+
+                if let Some(ref mut cse_cache) = self.cse_cache {
+                    cse_cache.insert_instr(block, cse_index, result);
+                }
+
+                self.body.push_instr(block, instr);
+
+                Some(result)
+            });
     }
 
     fn visit_return(&mut self, ret: &Return) {
@@ -501,16 +512,16 @@ impl AstVisitor for IrBodyGenerator {
                 Some(result) => self.load_const(result),
                 None => {
                     let block = self.current_block.expect("invariant violated: term must be in block");
-                    let index_instr = IndexableInstr::from_factor_op(*op, lhs, rhs);
+                    let cse_index = IndexableInstr::from_factor_op(*op, lhs, rhs);
 
                     self.last_val = self.cse_cache.as_ref()
-                        .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
+                        .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index))
                         .or_else(|| {
                             let result = self.alloc_val();
                             let instr = Instruction::StoredBinaryOp(opcode, lhs, rhs, result);
 
                             if let Some(ref mut cse_cache) = self.cse_cache {
-                                cse_cache.insert_instr(block, index_instr, result);
+                                cse_cache.insert_instr(block, cse_index, result);
                             }
 
                             self.body.push_instr(block, instr);
