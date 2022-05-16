@@ -12,7 +12,7 @@ The `justfile` provides a few utility scripts to make life easier:
 ## Roadmap
 Roadmap for goals to accomplish this quarter:
 
-### Must Have
+### Requirements
 - [x] Basic frontend (scanner, parser, AST)
 - [x] IR instruction set design
 - [x] IR generation from AST
@@ -40,19 +40,22 @@ Roadmap for goals to accomplish this quarter:
   - [ ] Codegen
   - [ ] End to end
 
-### Should Have
+### Stretch Goals
 - [x] Constant propagation
 - [x] Custom DLX simulator
     * Done in Rust
     * May require converting to cargo workspace
+- [ ] More optimizations
+  - [x] Dead code elimination
+  - [ ] Basic (very basic) instruction selection
+    * Meaning basically just prefer immediate instructions when exactly one operand is a constant
+    * IMPORTANT: you may reorder operands to achieve this ONLY IF the operation is commutative
+  - [ ] "Dead constant elimination"
+    * Basically just stop allocating values for unused constants by detecting and eliminating them during IR generation
 - [ ] Config levels
   * Just the general idea of providing a way to opt in or out of certain advanced features
   * Mainly useful for offering a "standard" mode which enables exactly the set of features required for CS 142B, and then other mode(s) for advanced stuff
   * Likely manifests itself in 2 ways: optimization levels and "strict mode" (which enables extra semantic checks)
 
-### Nice to Have
-- [ ] More optimizations
-  - [ ] Dead code elimination
-- [ ] ARM/macOS backend & codegen (with or without system `cc` dependency)
-- [ ] x86/macOS backend & codegen (with or without system `cc` dependency)
-- [ ] x86/Linux backend & codegen (with or without system `cc` dependency)
+### Extreme Stretch Goals
+- [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
