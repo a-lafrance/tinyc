@@ -1,4 +1,5 @@
 mod dump;
+pub(crate) mod opt;
 
 use std::{
     ffi::OsString,
@@ -8,14 +9,14 @@ use std::{
 use clap::Parser as ArgParse;
 use crate::{
     codegen::{dlx, SupportedArch},
-    ir::{
-        opt::{OptConfig, OptLevel},
-        IrStore,
-    },
+    ir::IrStore,
     parser::Parser,
     scanner,
 };
-use self::dump::{dump_ir, IrDumpFormat};
+use self::{
+    dump::{dump_ir, IrDumpFormat},
+    opt::{OptConfig, OptLevel},
+};
 
 #[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
@@ -43,6 +44,9 @@ pub(crate) struct Config {
 
     #[clap(long, help = "Manually enable dead code elimination")]
     pub enable_dead_code_elim: bool,
+
+    #[clap(long, help = "Manually enable instruction selection")]
+    pub enable_instr_select: bool,
 }
 
 pub fn start<Args, T>(args: Args)
@@ -81,7 +85,7 @@ where
             } else if let Some(SupportedArch::Dlx) = config.arch {
                 let outfile = File::create(config.output.unwrap_or_else(|| "a.out".to_string()))
                     .expect("failed to open output file");
-                dlx::gen_code(ir, BufWriter::new(outfile));
+                dlx::gen_code(ir, BufWriter::new(outfile), opt);
             }
         },
 

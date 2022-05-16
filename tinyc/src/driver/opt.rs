@@ -3,13 +3,14 @@ use std::{
     fmt::{self, Display, Formatter},
     str::FromStr,
 };
-use crate::driver::Config;
+use super::Config;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OptConfig {
     pub cse: bool,
     pub const_prop: bool,
     pub dead_code_elim: bool,
+    pub instr_select: bool,
 }
 
 impl From<&Config> for OptConfig {
@@ -18,6 +19,7 @@ impl From<&Config> for OptConfig {
             cse: cfg.enable_cse || cfg.opt_level.enable_cse(),
             const_prop: cfg.enable_const_prop || cfg.opt_level.enable_const_prop(),
             dead_code_elim: cfg.enable_dead_code_elim || cfg.opt_level.enable_dead_code_elim(),
+            instr_select: cfg.enable_instr_select || cfg.opt_level.enable_instr_select(),
         }
     }
 }
@@ -40,6 +42,10 @@ impl OptLevel {
     }
 
     pub fn enable_dead_code_elim(&self) -> bool {
+        matches!(self, OptLevel::Full)
+    }
+
+    pub fn enable_instr_select(&self) -> bool {
         matches!(self, OptLevel::Full)
     }
 }

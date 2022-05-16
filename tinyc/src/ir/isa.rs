@@ -226,6 +226,21 @@ impl From<BranchOpcode> for F1Opcode {
     }
 }
 
+impl TryFrom<StoredBinaryOpcode> for F1Opcode {
+    type Error = StoredBinaryOpcode;
+
+    fn try_from(opcode: StoredBinaryOpcode) -> Result<Self, Self::Error> {
+        match opcode {
+            StoredBinaryOpcode::Add => Ok(F1Opcode::Addi),
+            StoredBinaryOpcode::Sub => Ok(F1Opcode::Subi),
+            StoredBinaryOpcode::Mul => Ok(F1Opcode::Muli),
+            StoredBinaryOpcode::Div => Ok(F1Opcode::Divi),
+            StoredBinaryOpcode::Cmp => Ok(F1Opcode::Cmpi),
+            opcode @ StoredBinaryOpcode::Phi => Err(opcode),
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StoredBinaryOpcode {

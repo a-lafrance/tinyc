@@ -25,7 +25,7 @@ impl TestRun {
     pub fn run(self, input: String, expected: &str) {
         // TODO: some kind of timeout mechanism
         let mut output_stream = Vec::new();
-        Emulator::load(&self.binary, input.as_bytes(), &mut output_stream)
+        Emulator::load(&self.binary, input.as_bytes(), &mut output_stream, true)
             .expect("failed to start emulator")
             .start();
 

@@ -15,10 +15,11 @@ pub struct Emulator<Stdin: Read, Stdout: Write> {
     pc: usize,
     stdin: BufReader<Stdin>,
     stdout: Stdout,
+    quiet: bool,
 }
 
 impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
-    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout) -> Result<Emulator<Stdin, Stdout>, LoadError> {
+    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout, quiet: bool) -> Result<Emulator<Stdin, Stdout>, LoadError> {
         // open file/bufreader for file
         let f = File::open(prog_file)?;
         let mut reader = BufReader::new(f);
@@ -41,6 +42,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             pc: 0,
             stdin: BufReader::new(stdin),
             stdout,
+            quiet,
         })
     }
 
@@ -60,9 +62,38 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 
     fn exec_current_instr(&mut self) -> ControlFlow {
         match self.fetch_instr() {
-            Instruction::F1(F1Opcode::Addi, r1, r2, imm) => {
-                let result = (self.load_reg(r2) as i64 + imm as i64) as u32;
-                self.store_reg(r1, result);
+            Instruction::F1(F1Opcode::Addi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 + imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Subi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 - imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Muli, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 * imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Divi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 / imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
+                let src = self.load_reg(src) as i64;
+                let result = match src.cmp(&(imm as i64)) {
+                    Ordering::Less => 0,
+                    Ordering::Equal => 1,
+                    Ordering::Greater => 2,
+                };
+                self.store_reg(dest, result);
 
                 ControlFlow::Continue
             },
@@ -176,6 +207,11 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn read_to(&mut self, r: Register) {
+        if !self.quiet {
+            write!(self.stdout, "> ").unwrap();
+            self.stdout.flush().unwrap();
+        }
+        
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 

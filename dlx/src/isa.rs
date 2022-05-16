@@ -146,7 +146,7 @@ impl Error for InvalidOpcode { }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
-    Addi = 16, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
+    Addi = 16, Subi, Muli, Divi, Cmpi = 21, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
 }
 
 impl F1Opcode {
@@ -163,6 +163,10 @@ impl Display for F1Opcode {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             F1Opcode::Addi => write!(f, "addi"),
+            F1Opcode::Subi => write!(f, "subi"),
+            F1Opcode::Muli => write!(f, "muli"),
+            F1Opcode::Divi => write!(f, "divi"),
+            F1Opcode::Cmpi => write!(f, "cmpi"),
             F1Opcode::Beq => write!(f, "beq"),
             F1Opcode::Bne => write!(f, "bne"),
             F1Opcode::Blt => write!(f, "blt"),
@@ -277,7 +281,6 @@ pub struct Register(pub u8);
 impl Register {
     pub const N_REGS: usize = 32;
     pub const R0: Register = Register(0);
-    pub const RCMP: Register = Register(27);
     pub const RRET: Register = Register(31);
 }
 

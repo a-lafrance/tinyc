@@ -6,6 +6,9 @@ use dlx::Emulator;
 struct Args {
     #[clap(help = "DLX binary to run")]
     binary: String,
+
+    #[clap(short, long, help = "Run emu in quiet mode")]
+    quiet: bool,
 }
 
 fn main() {
@@ -17,5 +20,6 @@ fn main() {
         &args.binary,
         stdin.lock(),
         stdout.lock(),
+        args.quiet,
     ).expect("failed to load emulator").start();
 }
