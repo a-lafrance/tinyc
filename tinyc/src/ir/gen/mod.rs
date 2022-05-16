@@ -3,7 +3,7 @@ mod utils;
 
 use crate::{
     ast::{
-        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Term,
+        Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Stmt, Term,
         visit::{self, AstVisitor},
     },
     utils::{Builtin, Keyword},
@@ -58,8 +58,9 @@ pub struct IrBodyGenerator {
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
     next_val: Value,
-    current_block: Option<BasicBlock>,
     cse_cache: CseCache,
+    current_block: Option<BasicBlock>,
+    current_block_returns: bool,
 }
 
 impl IrBodyGenerator {
@@ -83,8 +84,9 @@ impl IrBodyGenerator {
             const_alloc: ConstAllocator::default(),
             last_val: None,
             next_val: Value(0),
-            current_block: None,
             cse_cache: CseCache::new(),
+            current_block: None,
+            current_block_returns: false,
         }
     }
 
@@ -200,6 +202,7 @@ impl AstVisitor for IrBodyGenerator {
         visit::walk_block(self, block);
 
         if self.body.basic_block_data(bb).is_empty() {
+            // FIXME: not triggering for some reason? specifically w/ dead code elimination
             self.body.push_instr(bb, Instruction::Nop);
         }
     }
@@ -335,6 +338,10 @@ impl AstVisitor for IrBodyGenerator {
         self.visit_block(&if_stmt.then_block);
         let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
+        // reset return status after saving status for then path
+        let mut both_paths_return = self.current_block_returns;
+        self.current_block_returns = false;
+
         // pre-allocate join basic block
         // use the then block as the basis for the join block's values to make phi discovery easier
         let join_bb = self.make_basic_block_from(then_end_bb, condition_bb);
@@ -346,9 +353,11 @@ impl AstVisitor for IrBodyGenerator {
                 let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
                 self.visit_block(else_block);
                 let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
+                both_paths_return = both_paths_return && self.current_block_returns;
 
                 // connect then block to join block via branch
                 // connect else block to join block via fallthrough
+                // FIXME: this produces an extra branch instruction when the then path returns
                 self.body.connect_via_branch(then_end_bb, join_bb, BranchOpcode::Br);
                 self.body.connect_via_fallthrough(else_end_bb, join_bb);
                 (else_bb, else_end_bb, Some(else_bb))
@@ -356,6 +365,7 @@ impl AstVisitor for IrBodyGenerator {
 
             None => {
                 // connect then block to join block via fallthrough
+                both_paths_return = false; // "both paths return" implies there are 2 paths
                 self.body.connect_via_fallthrough(then_end_bb, join_bb);
                 (join_bb, condition_bb, None)
             },
@@ -368,6 +378,7 @@ impl AstVisitor for IrBodyGenerator {
 
         // fast-forward to join block
         self.current_block = Some(join_bb);
+        self.current_block_returns = both_paths_return;
         self.generate_phis(join_bb, phi_compare_bb, join_bb);
     }
 
@@ -442,6 +453,13 @@ impl AstVisitor for IrBodyGenerator {
         }
 
         self.body.push_instr(block, Instruction::Return);
+        self.current_block_returns = true;
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) {
+        if !self.current_block_returns {
+            visit::walk_stmt(self, stmt);
+        }
     }
 
     fn visit_term(&mut self, term: &Term) {
