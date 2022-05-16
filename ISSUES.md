@@ -12,3 +12,4 @@ Keeping tabs on all the bugs
 - [ ] Extra returns getting generated all over the place
 - [ ] Const branching doesn't work for loops
 - [ ] Simple register allocator doesn't properly respect calling conventions
+- [ ] Calls in IR always allocate a result value, even if the function is void

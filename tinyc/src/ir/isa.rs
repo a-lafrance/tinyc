@@ -9,10 +9,10 @@ use crate::{
 use dlx::isa::{F1Opcode, F2Opcode};
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Body {
-    blocks: Vec<BasicBlockData>,
-    root: Option<BasicBlock>,
+    pub(super) blocks: Vec<BasicBlockData>,
+    pub(super) root: Option<BasicBlock>,
 }
 
 impl Body {
@@ -301,12 +301,12 @@ impl Display for BasicBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BasicBlockData {
-    body: Vec<Instruction>,
-    val_table: HashMap<String, Value>,
-    edge: ControlFlowEdge,
-    dominator: Option<BasicBlock>,
+    pub(super) body: Vec<Instruction>,
+    pub(super) val_table: HashMap<String, Value>,
+    pub(super) edge: ControlFlowEdge,
+    pub(super) dominator: Option<BasicBlock>,
 }
 
 impl BasicBlockData {

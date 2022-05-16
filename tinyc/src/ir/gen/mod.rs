@@ -86,6 +86,7 @@ impl IrBodyGenerator {
 
     fn new(opt: OptConfig) -> IrBodyGenerator {
         let cse_cache = if opt.cse { Some(CseCache::new()) } else { None };
+
         IrBodyGenerator {
             body: Body::new(),
             const_alloc: ConstAllocator::default(),
@@ -96,6 +97,12 @@ impl IrBodyGenerator {
             current_block_returns: false,
             opt,
         }
+    }
+
+    #[cfg(test)]
+    pub(self) fn into_body(mut self) -> Body {
+        self.const_alloc.make_prelude_block(&mut self.body);
+        self.body
     }
 
     pub(self) fn alloc_val(&mut self) -> Value {
@@ -261,6 +268,10 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
+    // test cases:
+        // sanity check
+        // complex program sanity check
+        // multiple bb program -> end instr buffered in last block
     fn visit_computation(&mut self, comp: &Computation) {
         let main_block = self.fill_basic_block();
         self.visit_block(&comp.body);
@@ -272,6 +283,10 @@ impl AstVisitor for IrBodyGenerator {
         );
     }
 
+    // test cases:
+        // just one term
+        // single term op
+        // many term ops
     fn visit_expr(&mut self, expr: &Expr) {
         self.visit_term(&expr.root);
 
@@ -305,27 +320,38 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
+    // test cases:
+        // sanity check for each kind of factor
     fn visit_factor(&mut self, factor: &Factor) {
         match factor {
             Factor::VarRef(var) => self.load_var(var),
             Factor::Number(n) => self.load_const(*n),
-            _ => visit::walk_factor(self, factor),
+            f => visit::walk_factor(self, f),
         }
     }
 
+    // test cases:
+        // sanity check for each io builtin
+        // no arg function
+        // single arg function
+        // many arg function
     fn visit_func_call(&mut self, call: &FuncCall) {
-        let instr = match Builtin::from(&call.name) {
+        let block = self.current_block.expect("invariant violated: func call must be in block");
+
+        match Builtin::from(&call.name) {
             Some(Builtin::InputNum) => {
                 let val = self.alloc_val();
                 self.last_val = Some(val);
-
-                Some(Instruction::Read(val))
+                self.body.push_instr(block, Instruction::Read(val));
             },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
-                Some(Instruction::Write(self.last_val.expect("invariant violated: expected expr")))
+                self.body.push_instr(
+                    block,
+                    Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
+                );
             },
-            Some(Builtin::OutputNewLine) => Some(Instruction::Writeln),
+            Some(Builtin::OutputNewLine) => self.body.push_instr(block, Instruction::Writeln),
             None => {
                 // _can't_ cse calls because they may have side effects
                     // a more robust optimization could track which functions do and don't have side effects but eh
@@ -348,18 +374,15 @@ impl AstVisitor for IrBodyGenerator {
                 self.body.push_instr(block, Instruction::Bind(dest_val, CCLocation::RetVal));
 
                 self.last_val = Some(dest_val);
-                None
             },
-        };
-
-        if let Some(instr) = instr {
-            self.body.push_instr(
-                self.current_block.expect("invariant violated: func call must be in block"),
-                instr
-            );
         }
     }
 
+    // test cases:
+        // no param function
+        // single param function
+        // many param function
+        // complex function sanity check
     fn visit_func_decl(&mut self, decl: &FuncDecl) {
         let root = self.fill_basic_block();
         self.body.set_root_block(root);
@@ -373,6 +396,21 @@ impl AstVisitor for IrBodyGenerator {
         visit::walk_func_decl(self, decl);
     }
 
+    // test cases:
+        // sanity check with else
+            // with phis
+            // no phis
+        // sanity check no else
+            // with phis
+            // no phis
+        // complex control flow (every then/else config)
+            // complex then branch
+                // if statement
+                // loop
+            // complex else branch
+                // if statement
+                // loop
+            // even deeper nesting?
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
         // check condition in start basic block
         self.visit_relation(&if_stmt.condition);
@@ -438,6 +476,14 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
+    // test cases:
+        // sanity check
+            // with phis
+            // no phis
+        // complex body
+            // if statement
+            // loop
+            // deeper nesting?
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
         let start_bb = self.make_basic_block_from(prev_bb, prev_bb);
@@ -488,6 +534,8 @@ impl AstVisitor for IrBodyGenerator {
         self.current_block = Some(post_bb);
     }
 
+    // test cases:
+        // sanity check each relop
     fn visit_relation(&mut self, relation: &Relation) {
         self.visit_expr(&relation.lhs);
         let lhs = self.last_val.expect("invariant violated: expected expr");
@@ -519,6 +567,9 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
+    // test cases:
+        // with value
+        // no value
     fn visit_return(&mut self, ret: &Return) {
         visit::walk_return(self, ret);
         let block = self.current_block.expect("invariant violated: return must be in block");
@@ -531,12 +582,19 @@ impl AstVisitor for IrBodyGenerator {
         self.current_block_returns = true;
     }
 
+    // test cases:
+        // sanity check each kind of statement
     fn visit_stmt(&mut self, stmt: &Stmt) {
         if !self.opt.dead_code_elim || !self.current_block_returns {
             visit::walk_stmt(self, stmt);
         }
     }
 
+    // test cases:
+        // just one factor
+        // just one factor op
+        // many factor ops
+        // MAKE SURE TO TEST BOTH FACTOR OPS
     fn visit_term(&mut self, term: &Term) {
         self.visit_factor(&term.root);
 
@@ -569,5 +627,165 @@ impl AstVisitor for IrBodyGenerator {
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::HashMap;
+    use maplit::hashmap;
+    use crate::{
+        ast::{Return},
+        driver::opt::OptLevel,
+        ir::isa::{BasicBlock, BasicBlockData},
+        utils::Builtin,
+    };
+
+    fn make_ir_generator(lvl: OptLevel) -> IrBodyGenerator {
+        let opt = OptConfig::from(lvl);
+        let mut gen = IrBodyGenerator::new(opt);
+        gen.current_block = Some(gen.body.make_new_root());
+
+        gen
+    }
+
+    #[test]
+    fn assignment_ir_gen() {
+        /*
+            let x <- 1;
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_assignment(&Assignment {
+            place: "x".to_string(),
+            value: Expr {
+                root: Term {
+                    root: Factor::Number(1),
+                    ops: Vec::new(),
+                },
+                ops: Vec::new(),
+            }
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![],
+                    val_table: hashmap!{"x".to_string() => Value(0)},
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(1, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(1)),
+        })
+    }
+
+    #[test]
+    fn empty_block_ir_gen() {
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Nop],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    #[test]
+    fn single_stmt_block_ir_gen() {
+        /*
+            {
+                return;
+            }.
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![Stmt::Return(Return { value: None })]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Return],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    #[test]
+    fn many_stmt_block_ir_gen() {
+        /*
+            {
+                call OutputNum(5);
+                call OutputNewLine();
+            }
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![
+                Stmt::FuncCall(FuncCall {
+                    name: Builtin::OutputNum.to_string(),
+                    args: vec![Expr {
+                        root: Term {
+                            root: Factor::Number(5),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    }]
+                }),
+                Stmt::FuncCall(FuncCall {
+                    name: Builtin::OutputNewLine.to_string(),
+                    args: vec![],
+                }),
+            ]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Write(Value(0)), Instruction::Writeln],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn dead_code_empty_block_ir_gen() {
+        todo!();
     }
 }
