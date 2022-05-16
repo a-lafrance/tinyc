@@ -1,0 +1,18 @@
+main
+var max;
+
+function StupidMax(a, b);
+{
+    if a > b
+    then
+        return a;
+    fi;
+    
+    return b;
+};
+
+{
+    let max <- call StupidMax(call InputNum(), call InputNum());
+    call OutputNum(max);
+    call OutputNewLine();
+}.

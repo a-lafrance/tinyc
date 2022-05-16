@@ -1,0 +1,11 @@
+main
+
+void function deadCode();
+{
+    return;
+    call OutputNum(5);
+};
+
+{
+    call deadCode();
+}.
