@@ -8,12 +8,12 @@ use uuid::Uuid;
 
 #[test]
 fn e2e_const_prop() {
-    TestRun::start("rsrc/const_prop.tiny", Uuid::new_v4())
+    TestRun::start("rsrc/const_prop.tiny", Uuid::new_v4(), Some(vec!["--enable-const-prop"]))
         .run(String::new(), "14\n");
 }
 
 #[test]
 fn e2e_arithmetic() {
-    TestRun::start("rsrc/arithmetic.tiny", Uuid::new_v4())
+    TestRun::start("rsrc/arithmetic.tiny", Uuid::new_v4(), None)
         .run("10\n5\n".to_string(), "15\n5\n50\n2\n");
 }

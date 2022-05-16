@@ -8,7 +8,10 @@ use std::{
 use clap::Parser as ArgParse;
 use crate::{
     codegen::{dlx, SupportedArch},
-    ir::IrStore,
+    ir::{
+        opt::{OptConfig, OptLevel},
+        IrStore,
+    },
     parser::Parser,
     scanner,
 };
@@ -16,18 +19,30 @@ use self::dump::{dump_ir, IrDumpFormat};
 
 #[derive(Debug, ArgParse)]
 #[clap(author, version, about)]
-struct Config {
+pub(crate) struct Config {
     #[clap(help = "The source file to compile")]
-    input: String,
+    pub input: String,
 
     #[clap(short, long, help = "The output file path")]
-    output: Option<String>,
+    pub output: Option<String>,
 
-    #[clap(long, help = "Format to dump generated IR")]
-    dump_ir: Option<IrDumpFormat>,
+    #[clap(long, help = "Emit IR in the specified format")]
+    pub dump_ir: Option<IrDumpFormat>,
 
-    #[clap(short, long, help = "Architecture to emit native code for")]
-    arch: Option<SupportedArch>,
+    #[clap(short, long, help = "Architecture for which to emit native code")]
+    pub arch: Option<SupportedArch>,
+
+    #[clap(short = 'O', long = "opt", default_value_t, help = "Optimization level to enable")]
+    pub opt_level: OptLevel,
+
+    #[clap(long, help = "Manually enable common subexpression elimination")]
+    pub enable_cse: bool,
+
+    #[clap(long, help = "Manually enable constant propagation")]
+    pub enable_const_prop: bool,
+
+    #[clap(long, help = "Manually enable dead code elimination")]
+    pub enable_dead_code_elim: bool,
 }
 
 pub fn start<Args, T>(args: Args)
@@ -36,6 +51,8 @@ where
     T: Into<OsString> + Clone,
 {
     let config = Config::parse_from(args);
+    let opt = OptConfig::from(&config);
+
     let mut src_file = File::open(config.input).expect("failed to open input file");
     let mut input = String::new();
     src_file
@@ -46,7 +63,7 @@ where
 
     match Parser::new(tokens).and_then(|mut p| p.parse_computation()) {
         Ok(ast) => {
-            let ir = IrStore::from(ast);
+            let ir = IrStore::from_ast(ast, opt);
 
             if let Some(dump_fmt) = config.dump_ir {
                 // FIXME: better error handling when opening outfile
@@ -57,6 +74,10 @@ where
                 };
 
                 dump_result.expect("failed to dump IR");
+
+                if config.arch.is_some() {
+                    println!("warning: --arch is ignored when --dump-ir is provided");
+                }
             } else if let Some(SupportedArch::Dlx) = config.arch {
                 let outfile = File::create(config.output.unwrap_or_else(|| "a.out".to_string()))
                     .expect("failed to open output file");

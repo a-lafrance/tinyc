@@ -9,11 +9,16 @@ pub struct TestRun {
 
 impl TestRun {
     // These functions _will_ panic, in order to terminate the test
-    pub fn start(src_file: &str, id: Uuid) -> TestRun {
+    pub fn start(src_file: &str, id: Uuid, opt_args: Option<Vec<&str>>) -> TestRun {
         // tinyc --arch dlx -o e2e-tmp-<id> <src_file>
         let binary = format!("/tmp/e2e-tmp-{}", id);
-        driver::start(vec!["tinyc", "--arch", "dlx", "-o", &binary, src_file].into_iter());
+        let mut args = vec!["tinyc", "--arch", "dlx", "-o", &binary, src_file];
 
+        if let Some(opt_args) = opt_args {
+            args.extend(opt_args.iter());
+        }
+
+        driver::start(args.into_iter());
         TestRun { binary }
     }
 

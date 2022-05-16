@@ -14,21 +14,25 @@ use self::{
 };
 use super::{
     isa::{BasicBlock, Body, BranchOpcode, CCLocation, ControlFlowEdge, Instruction, StoredBinaryOpcode, Value},
+    opt::OptConfig,
     IrStore,
 };
 
 
-pub struct IrGenerator(IrStore);
+pub struct IrGenerator {
+    store: IrStore,
+    opt: OptConfig,
+}
 
 impl IrGenerator {
-    pub fn gen(ast: &Computation) -> IrStore {
-        let mut gen = IrGenerator::new();
+    pub fn gen(ast: &Computation, opt: OptConfig) -> IrStore {
+        let mut gen = IrGenerator::new(opt);
         gen.visit_computation(ast);
-        gen.0
+        gen.store
     }
 
-    fn new() -> IrGenerator {
-        IrGenerator(IrStore::new())
+    fn new(opt: OptConfig) -> IrGenerator {
+        IrGenerator { store: IrStore::new(), opt }
     }
 }
 
@@ -38,16 +42,16 @@ impl AstVisitor for IrGenerator {
             self.visit_func_decl(func);
         }
 
-        self.0.register(
+        self.store.register(
             Keyword::Main.to_string(),
-            IrBodyGenerator::gen_from_computation(comp),
+            IrBodyGenerator::gen_from_computation(comp, self.opt),
         );
     }
 
     fn visit_func_decl(&mut self, func: &FuncDecl) {
-        self.0.register(
+        self.store.register(
             func.name.clone(),
-            IrBodyGenerator::gen_from_func_decl(func),
+            IrBodyGenerator::gen_from_func_decl(func, self.opt),
         );
     }
 }
@@ -58,35 +62,38 @@ pub struct IrBodyGenerator {
     const_alloc: ConstAllocator,
     last_val: Option<Value>,
     next_val: Value,
-    cse_cache: CseCache,
+    cse_cache: Option<CseCache>,
     current_block: Option<BasicBlock>,
     current_block_returns: bool,
+    opt: OptConfig,
 }
 
 impl IrBodyGenerator {
-    pub fn gen_from_computation(comp: &Computation) -> Body {
-        let mut gen = IrBodyGenerator::new();
+    pub fn gen_from_computation(comp: &Computation, opt: OptConfig) -> Body {
+        let mut gen = IrBodyGenerator::new(opt);
         gen.visit_computation(comp);
         gen.const_alloc.make_prelude_block(&mut gen.body);
         gen.body
     }
 
-    pub fn gen_from_func_decl(func: &FuncDecl) -> Body {
-        let mut gen = IrBodyGenerator::new();
+    pub fn gen_from_func_decl(func: &FuncDecl, opt: OptConfig) -> Body {
+        let mut gen = IrBodyGenerator::new(opt);
         gen.visit_func_decl(func);
         gen.const_alloc.make_prelude_block(&mut gen.body);
         gen.body
     }
 
-    fn new() -> IrBodyGenerator {
+    fn new(opt: OptConfig) -> IrBodyGenerator {
+        let cse_cache = if opt.cse { Some(CseCache::new()) } else { None };
         IrBodyGenerator {
             body: Body::new(),
             const_alloc: ConstAllocator::default(),
             last_val: None,
             next_val: Value(0),
-            cse_cache: CseCache::new(),
+            cse_cache,
             current_block: None,
             current_block_returns: false,
+            opt,
         }
     }
 
@@ -112,13 +119,21 @@ impl IrBodyGenerator {
 
     fn make_basic_block(&mut self) -> BasicBlock {
         let bb = self.body.make_new_basic_block(ControlFlowEdge::Leaf);
-        self.cse_cache.insert_block(bb);
+
+        if let Some(ref mut cse_cache) = self.cse_cache {
+            cse_cache.insert_block(bb);
+        }
+
         bb
     }
 
     fn make_basic_block_from(&mut self, base: BasicBlock, parent: BasicBlock) -> BasicBlock {
         let bb = self.body.make_new_basic_block_from(base, parent, ControlFlowEdge::Leaf);
-        self.cse_cache.insert_block(bb);
+
+        if let Some(ref mut cse_cache) = self.cse_cache {
+            cse_cache.insert_block(bb);
+        }
+
         bb
     }
 
@@ -140,7 +155,7 @@ impl IrBodyGenerator {
 
     /// Detects differences between the values in bb1 and bb2, and generates the
     /// corresponding phi instructions in dest
-    fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) -> Vec<(Value, Value, Value)>{
+    fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) -> Vec<(Value, Value, Value)> {
         let bb1_data = self.body.basic_block_data(bb1);
         let bb2_data = self.body.basic_block_data(bb2);
         let mismatches = bb1_data.values().filter_map(|(var, val)| {
@@ -172,17 +187,21 @@ impl IrBodyGenerator {
         phis
     }
 
-    // MARK: this is where const prop is centered
     fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<u32> {
-        let c1 = self.const_alloc.const_for_val(v1)?;
-        let c2 = self.const_alloc.const_for_val(v2)?;
+        if self.opt.const_prop {
+            let c1 = self.const_alloc.const_for_val(v1)?;
+            let c2 = self.const_alloc.const_for_val(v2)?;
 
-        match op {
-            StoredBinaryOpcode::Add => Some(c1 + c2),
-            StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
-            StoredBinaryOpcode::Mul => Some(c1 * c2),
-            StoredBinaryOpcode::Div => Some(c1 / c2),
-            StoredBinaryOpcode::Phi => None,
+            match op {
+                StoredBinaryOpcode::Add => Some(c1 + c2),
+                StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
+                StoredBinaryOpcode::Mul => Some(c1 * c2),
+                StoredBinaryOpcode::Div => Some(c1 / c2),
+                StoredBinaryOpcode::Phi => None,
+            }
+        } else {
+            // Always fail the const computation if const prop is disabled
+            None
         }
     }
 }
@@ -233,7 +252,8 @@ impl AstVisitor for IrBodyGenerator {
                     let block = self.current_block.expect("invariant violated: expr must be in block");
                     let index_instr = IndexableInstr::from_term_op(*op, lhs, rhs);
 
-                    self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                    self.last_val = self.cse_cache.as_ref()
+                        .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
                         .or_else(|| {
                             let result = self.alloc_val();
                             let instr = Instruction::StoredBinaryOp {
@@ -243,9 +263,11 @@ impl AstVisitor for IrBodyGenerator {
                                 dest: result,
                             };
 
-                            self.cse_cache.insert_instr(block, index_instr, result);
-                            self.body.push_instr(block, instr);
+                            if let Some(ref mut cse_cache) = self.cse_cache {
+                                cse_cache.insert_instr(block, index_instr, result);
+                            }
 
+                            self.body.push_instr(block, instr);
                             Some(result)
                         });
                 },
@@ -279,28 +301,32 @@ impl AstVisitor for IrBodyGenerator {
                 let block = self.current_block.expect("invariant violated: must be in block");
                 let index_instr = IndexableInstr::Call(call.name.clone());
 
-                let dest_val = match self.cse_cache.get_common_subexpr(&self.body, block, &index_instr) {
-                    Some(val) => val,
-                    None => {
-                        for (i, arg) in call.args.iter().enumerate() {
-                            self.visit_expr(arg);
-                            self.body.push_instr(
-                                block,
-                                Instruction::Mu(
-                                    self.last_val.expect("invariant violated: arg must have val"),
-                                    CCLocation::Arg(i),
-                                ),
-                            );
+                let dest_val = match self.cse_cache.as_ref()
+                    .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr)) {
+                        Some(val) => val,
+                        None => {
+                            for (i, arg) in call.args.iter().enumerate() {
+                                self.visit_expr(arg);
+                                self.body.push_instr(
+                                    block,
+                                    Instruction::Mu(
+                                        self.last_val.expect("invariant violated: arg must have val"),
+                                        CCLocation::Arg(i),
+                                    ),
+                                );
+                            }
+
+                            let dest_val = self.alloc_val();
+                            self.body.push_instr(block, Instruction::Call(call.name.clone()));
+                            self.body.push_instr(block, Instruction::Mu(dest_val, CCLocation::RetVal));
+
+                            if let Some(ref mut cse_cache) = self.cse_cache {
+                                cse_cache.insert_instr(block, index_instr, dest_val);
+                            }
+
+                            dest_val
                         }
-
-                        let dest_val = self.alloc_val();
-                        self.body.push_instr(block, Instruction::Call(call.name.clone()));
-                        self.body.push_instr(block, Instruction::Mu(dest_val, CCLocation::RetVal));
-                        self.cse_cache.insert_instr(block, index_instr, dest_val);
-
-                        dest_val
-                    }
-                };
+                    };
 
                 self.last_val = Some(dest_val);
                 None
@@ -457,7 +483,7 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_stmt(&mut self, stmt: &Stmt) {
-        if !self.current_block_returns {
+        if !self.opt.dead_code_elim || !self.current_block_returns {
             visit::walk_stmt(self, stmt);
         }
     }
@@ -477,7 +503,8 @@ impl AstVisitor for IrBodyGenerator {
                     let block = self.current_block.expect("invariant violated: term must be in block");
                     let index_instr = IndexableInstr::from_factor_op(*op, lhs, rhs);
 
-                    self.last_val = self.cse_cache.get_common_subexpr(&self.body, block, &index_instr)
+                    self.last_val = self.cse_cache.as_ref()
+                        .and_then(|c| c.get_common_subexpr(&self.body, block, &index_instr))
                         .or_else(|| {
                             let result = self.alloc_val();
                             let instr = Instruction::StoredBinaryOp {
@@ -487,7 +514,10 @@ impl AstVisitor for IrBodyGenerator {
                                 dest: result,
                             };
 
-                            self.cse_cache.insert_instr(block, index_instr, result);
+                            if let Some(ref mut cse_cache) = self.cse_cache {
+                                cse_cache.insert_instr(block, index_instr, result);
+                            }
+
                             self.body.push_instr(block, instr);
 
                             Some(result)
