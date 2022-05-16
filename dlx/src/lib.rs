@@ -60,9 +60,38 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 
     fn exec_current_instr(&mut self) -> ControlFlow {
         match self.fetch_instr() {
-            Instruction::F1(F1Opcode::Addi, r1, r2, imm) => {
-                let result = (self.load_reg(r2) as i64 + imm as i64) as u32;
-                self.store_reg(r1, result);
+            Instruction::F1(F1Opcode::Addi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 + imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Subi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 - imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Muli, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 * imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Divi, dest, src, imm) => {
+                let result = (self.load_reg(src) as i64 / imm as i64) as u32;
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
+                let src = self.load_reg(src) as i64;
+                let result = match src.cmp(&(imm as i64)) {
+                    Ordering::Less => 0,
+                    Ordering::Equal => 1,
+                    Ordering::Greater => 2,
+                };
+                self.store_reg(dest, result);
 
                 ControlFlow::Continue
             },

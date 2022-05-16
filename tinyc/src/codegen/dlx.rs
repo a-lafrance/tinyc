@@ -25,13 +25,8 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>) {
 
 
 // my simple crappy attempt at register allocation for now:
-    // R27 is the condition register -- condition results get stored there
-        // TODO: update IR to:
-            // store cmp result in ssa value
-            // branch based on ssa value
-            // allocate these values into registers
     // for each value V, R(V) is its designated register
-    // yes, this means you can only have 26 values total in the program
+    // yes, this means you can only have 27 values total in the program
         // this will be fixed later
 struct DlxCodegen<'b> {
     body: &'b Body,
@@ -40,6 +35,7 @@ struct DlxCodegen<'b> {
     next_instr_addr: i16, // addr in words of next instr
     unresolved_branches: Vec<UnresolvedBranch>,
     cutoff_point: Option<BasicBlock>,
+    known_consts: HashMap<Value, u32>,
 }
 
 impl<'b> DlxCodegen<'b> {
@@ -51,6 +47,7 @@ impl<'b> DlxCodegen<'b> {
             next_instr_addr: 0,
             unresolved_branches: Vec::new(),
             cutoff_point: None,
+            known_consts: HashMap::new(),
         }
     }
 
@@ -99,6 +96,36 @@ impl<'b> DlxCodegen<'b> {
 
     fn load_and_visit_basic_block(&mut self, bb: BasicBlock) {
         self.visit_basic_block(bb, self.body.basic_block_data(bb));
+    }
+
+    fn imm_operands(
+        &self,
+        opcode: StoredBinaryOpcode,
+        src1: Value,
+        src2: Value,
+    ) -> Option<(F1Opcode, Value, i16)> {
+        let opcode = F1Opcode::try_from(opcode);
+
+        match opcode {
+            Ok(opcode @ F1Opcode::Addi) | Ok(opcode @ F1Opcode::Muli) => self.const_for_val(src1)
+                .map(|imm| (src2, imm as i16))
+                .or_else(|| self.const_for_val(src2).map(|imm| (src1, imm as i16)))
+                .map(|(src, imm)| (opcode, src, imm)),
+
+            Ok(opcode @ F1Opcode::Subi)
+             | Ok(opcode @ F1Opcode::Divi)
+             | Ok(opcode @ F1Opcode::Cmpi) => self.const_for_val(src2).map(|imm| (opcode, src1, imm as i16)),
+
+            _ => None,
+        }
+    }
+
+    fn mark_const(&mut self, val: Value, const_val: u32) {
+        self.known_consts.insert(val, const_val);
+    }
+
+    fn const_for_val(&self, val: Value) -> Option<u32> {
+        self.known_consts.get(&val).copied()
     }
 }
 
@@ -176,7 +203,7 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
-        // TODO: may use immediate instructions instead of actually allocating constants
+        self.mark_const(dest, const_val);
         self.emit_instr(Instruction::F1(F1Opcode::Addi, self.reg_for_val(dest), Register::R0, const_val as i16));
     }
 
@@ -201,12 +228,21 @@ impl IrVisitor for DlxCodegen<'_> {
             return; // FIXME: worry about this later
         }
 
-        self.emit_instr(Instruction::F2(
-            F2Opcode::from(opcode),
-            self.reg_for_val(dest),
-            self.reg_for_val(src1),
-            self.reg_for_val(src2),
-        ));
+        match self.imm_operands(opcode, src1, src2) {
+            Some((opcode, src, imm)) => self.emit_instr(Instruction::F1(
+                opcode,
+                self.reg_for_val(dest),
+                self.reg_for_val(src),
+                imm,
+            )),
+
+            None => self.emit_instr(Instruction::F2(
+                F2Opcode::from(opcode),
+                self.reg_for_val(dest),
+                self.reg_for_val(src1),
+                self.reg_for_val(src2),
+            )),
+        }
     }
 
     fn visit_write_instr(&mut self, src: Value) {
