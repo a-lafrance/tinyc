@@ -146,7 +146,9 @@ impl Error for InvalidOpcode { }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
-    Addi = 16, Subi, Muli, Divi, Cmpi = 21, Pop = 34, Psh = 38, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
+    Addi = 16, Subi, Muli, Divi, Cmpi = 21,
+    Ldw = 32, Pop = 34, Stw = 36, Psh = 38,
+    Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
 }
 
 impl F1Opcode {
@@ -167,7 +169,9 @@ impl Display for F1Opcode {
             F1Opcode::Muli => write!(f, "muli"),
             F1Opcode::Divi => write!(f, "divi"),
             F1Opcode::Cmpi => write!(f, "cmpi"),
+            F1Opcode::Ldw => write!(f, "ldw"),
             F1Opcode::Pop => write!(f, "pop"),
+            F1Opcode::Stw => write!(f, "stw"),
             F1Opcode::Psh => write!(f, "psh"),
             F1Opcode::Beq => write!(f, "beq"),
             F1Opcode::Bne => write!(f, "bne"),
@@ -190,7 +194,9 @@ impl TryFrom<u8> for F1Opcode {
             18 => Ok(F1Opcode::Muli),
             19 => Ok(F1Opcode::Divi),
             21 => Ok(F1Opcode::Cmpi),
+            32 => Ok(F1Opcode::Ldw),
             34 => Ok(F1Opcode::Pop),
+            36 => Ok(F1Opcode::Stw),
             38 => Ok(F1Opcode::Psh),
             40 => Ok(F1Opcode::Beq),
             41 => Ok(F1Opcode::Bne),

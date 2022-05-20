@@ -104,12 +104,22 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 
                 ControlFlow::Continue
             },
+            Instruction::F1(F1Opcode::Ldw, dest, base, offset) => {
+                let addr = (self.load_reg(base) as i32) + (offset as i32);
+                self.load_mem_into_reg(addr as u32, dest);
+                ControlFlow::Continue
+            },
             Instruction::F1(F1Opcode::Pop, dest, sp, size) => {
                 // load from sp into dest
                 // inc sp by size
                 self.load_mem_into_reg(self.load_reg(sp), dest);
                 self.update_sp(sp, size);
 
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Stw, src, base, offset) => {
+                let addr = (self.load_reg(base) as i32) + (offset as i32);
+                self.store_mem_from_reg(addr as u32, src);
                 ControlFlow::Continue
             },
             Instruction::F1(F1Opcode::Psh, src, sp, size) => {
