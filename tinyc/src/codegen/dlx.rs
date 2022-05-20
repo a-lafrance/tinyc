@@ -224,7 +224,7 @@ impl<'b> DlxCodegen<'b> {
 
 impl IrVisitor for DlxCodegen<'_> {
     fn visit_body(&mut self, body: &Body) {
-        if let Some((root, root_bb)) = body.root_block_data() {
+        if let Some((root, root_bb)) = body.root_block_entry() {
             self.visit_basic_block(root, root_bb);
         }
 

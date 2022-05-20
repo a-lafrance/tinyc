@@ -1,4 +1,4 @@
-use super::isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, Instruction, StoredBinaryOpcode, Value};
+use super::isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, ControlFlowEdge, CCLocation, Instruction, StoredBinaryOpcode, Value};
 
 pub trait IrVisitor: Sized {
     fn visit_body(&mut self, _body: &Body) { }
@@ -23,6 +23,55 @@ pub trait IrVisitor: Sized {
     fn visit_write_instr(&mut self, _src: Value) { }
     fn visit_writeln_instr(&mut self) { }
     fn visit_unconditional_branch_instr(&mut self, _dest: BasicBlock) { }
+}
+
+pub fn walk_body(v: &mut impl IrVisitor, body: &Body) {
+    if let Some((root, root_data)) = body.root_block_entry() {
+        walk_basic_block_in_body(v, root, root_data, body, None);
+    }
+}
+
+fn walk_basic_block_in_body(
+    v: &mut impl IrVisitor,
+    bb: BasicBlock,
+    bb_data: &BasicBlockData,
+    body: &Body,
+    cutoff: Option<BasicBlock>
+) {
+    if Some(bb) != cutoff {
+        v.visit_basic_block(bb, bb_data);
+
+        match bb_data.edge() {
+            ControlFlowEdge::Leaf => (),
+            ControlFlowEdge::Fallthrough(dest) | ControlFlowEdge::Branch(dest) => {
+                let dest_data = body.basic_block_data(dest);
+                walk_basic_block_in_body(v, dest, dest_data, body, cutoff);
+            },
+            ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb) => {
+                let then_bb_data = body.basic_block_data(then_bb);
+
+                match else_bb {
+                    Some(else_bb) => {
+                        let else_bb_data = body.basic_block_data(else_bb);
+
+                        walk_basic_block_in_body(v, then_bb, then_bb_data, body, Some(join_bb));
+                        walk_basic_block_in_body(v, else_bb, else_bb_data, body, cutoff);
+                    },
+
+                    None => {
+                        walk_basic_block_in_body(v, then_bb, then_bb_data, body, cutoff);
+                    },
+                }
+            },
+            ControlFlowEdge::Loop(body_bb, follow_bb) => {
+                let body_bb_data = body.basic_block_data(body_bb);
+                walk_basic_block_in_body(v, body_bb, body_bb_data, body, Some(bb));
+
+                let follow_bb_data = body.basic_block_data(follow_bb);
+                walk_basic_block_in_body(v, follow_bb, follow_bb_data, body, cutoff);
+            }
+        }
+    }
 }
 
 pub fn walk_basic_block(v: &mut impl IrVisitor, bb: &BasicBlockData) {

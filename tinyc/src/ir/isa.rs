@@ -52,7 +52,7 @@ impl Body {
         &mut self.blocks[bb.0]
     }
 
-    pub fn root_block_data(&self) -> Option<(BasicBlock, &BasicBlockData)> {
+    pub fn root_block_entry(&self) -> Option<(BasicBlock, &BasicBlockData)> {
         self.root.map(|r| (r, self.basic_block_data(r)))
     }
 
