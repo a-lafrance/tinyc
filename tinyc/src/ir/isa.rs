@@ -124,11 +124,12 @@ impl Body {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Instruction {
+    Bind(Value, CCLocation),
     Branch(BranchOpcode, Value, BasicBlock),
     Call(String),
     Const(u32, Value),
     End,
-    Mu(Value, CCLocation),
+    Move(Value, CCLocation),
     Nop,
     Read(Value),
     Return,
@@ -144,7 +145,7 @@ impl Instruction {
             Instruction::Const(_, dest) => Some(*dest),
             Instruction::Read(dest) => Some(*dest),
             Instruction::StoredBinaryOp(_, _, _, dest) => Some(*dest),
-            Instruction::Mu(val, _) => Some(*val),
+            Instruction::Bind(val, _) => Some(*val),
             _ => None,
         }
     }
@@ -155,7 +156,7 @@ impl Instruction {
         match self {
             Instruction::StoredBinaryOp(_, src1, src2, _) => vec![*src1, *src2],
             Instruction::Write(src) => vec![*src],
-            Instruction::Mu(val, _) => vec![*val],
+            Instruction::Move(val, _) => vec![*val],
             Instruction::Branch(_, cmp, _) => vec![*cmp],
             _ => vec![],
         }
@@ -175,7 +176,8 @@ impl Display for Instruction {
             Instruction::Writeln => write!(f, "writeln"),
             Instruction::End => write!(f, "end"),
             Instruction::Nop => write!(f, "nop"),
-            Instruction::Mu(val, loc) => write!(f, "mu {}, {}", val, loc),
+            Instruction::Bind(val, loc) => write!(f, "bind {}, {}", val, loc),
+            Instruction::Move(val, loc) => write!(f, "move {}, {}", val, loc),
             Instruction::UnconditionalBranch(dest) => write!(f, "br {}", dest),
         }
     }
