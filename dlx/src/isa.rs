@@ -8,7 +8,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 pub enum Instruction {
     F1(F1Opcode, Register, Register, i16),
     F2(F2Opcode, Register, Register, Register),
-    F3(F3Opcode, u32 /* this should be signed, but like... only kinda? */),
+    F3(F3Opcode, u32),
 }
 
 impl Instruction {
@@ -146,7 +146,7 @@ impl Error for InvalidOpcode { }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
-    Addi = 16, Subi, Muli, Divi, Cmpi = 21, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
+    Addi = 16, Subi, Muli, Divi, Cmpi = 21, Pop = 34, Psh = 38, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
 }
 
 impl F1Opcode {
@@ -167,6 +167,8 @@ impl Display for F1Opcode {
             F1Opcode::Muli => write!(f, "muli"),
             F1Opcode::Divi => write!(f, "divi"),
             F1Opcode::Cmpi => write!(f, "cmpi"),
+            F1Opcode::Pop => write!(f, "pop"),
+            F1Opcode::Psh => write!(f, "psh"),
             F1Opcode::Beq => write!(f, "beq"),
             F1Opcode::Bne => write!(f, "bne"),
             F1Opcode::Blt => write!(f, "blt"),
@@ -184,6 +186,12 @@ impl TryFrom<u8> for F1Opcode {
     fn try_from(bits: u8) -> Result<Self, Self::Error> {
         match bits {
             16 => Ok(F1Opcode::Addi),
+            17 => Ok(F1Opcode::Subi),
+            18 => Ok(F1Opcode::Muli),
+            19 => Ok(F1Opcode::Divi),
+            21 => Ok(F1Opcode::Cmpi),
+            34 => Ok(F1Opcode::Pop),
+            38 => Ok(F1Opcode::Psh),
             40 => Ok(F1Opcode::Beq),
             41 => Ok(F1Opcode::Bne),
             42 => Ok(F1Opcode::Blt),
@@ -281,6 +289,7 @@ pub struct Register(pub u8);
 impl Register {
     pub const N_REGS: usize = 32;
     pub const R0: Register = Register(0);
+    pub const RSP: Register = Register(29);
     pub const RRET: Register = Register(31);
 }
 

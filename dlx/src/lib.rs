@@ -9,9 +9,12 @@ use std::{
 };
 use self::isa::{F1Opcode, F2Opcode, Instruction, InstrDecodeError, Register};
 
+const MEM_SIZE: usize = 256;
+
 pub struct Emulator<Stdin: Read, Stdout: Write> {
     registers: [u32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
+    data_mem: [u32; MEM_SIZE],
     pc: usize,
     stdin: BufReader<Stdin>,
     stdout: Stdout,
@@ -36,14 +39,18 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             instr_mem.push(instr);
         }
 
-        Ok(Emulator {
+        let mut e = Emulator {
             registers: [0; Register::N_REGS],
             instr_mem,
+            data_mem: [0; MEM_SIZE],
             pc: 0,
             stdin: BufReader::new(stdin),
             stdout,
             quiet,
-        })
+        };
+        e.store_reg(Register::RSP, (e.data_mem.len() - 1) as u32);
+
+        Ok(e)
     }
 
     // TODO: return some kind of result/exit status
@@ -94,6 +101,20 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                     Ordering::Greater => 2,
                 };
                 self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Pop, dest, sp, size) => {
+                // load from sp into dest
+                // inc sp by size
+                self.load_mem_into_reg(self.load_reg(sp), dest);
+                self.update_sp(sp, size);
+
+                ControlFlow::Continue
+            },
+            Instruction::F1(F1Opcode::Psh, src, sp, size) => {
+                self.update_sp(sp, size);
+                self.store_mem_from_reg(self.load_reg(sp), src);
 
                 ControlFlow::Continue
             },
@@ -206,12 +227,35 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         self.registers[r.0 as usize] = val;
     }
 
+    fn load_mem(&self, addr: u32) -> u32 {
+        self.data_mem[addr as usize]
+    }
+
+    fn store_mem(&mut self, addr: u32, val: u32) {
+        self.data_mem[addr as usize] = val;
+    }
+
+    fn load_mem_into_reg(&mut self, addr: u32, dest: Register) {
+        let data = self.load_mem(addr);
+        self.store_reg(dest, data);
+    }
+
+    fn store_mem_from_reg(&mut self, addr: u32, src: Register) {
+        self.store_mem(addr, self.load_reg(src));
+    }
+
+    fn update_sp(&mut self, sp: Register, offset: i16) {
+        let current_sp = self.load_reg(sp);
+        let new_sp = (current_sp as i32) + (offset as i32);
+        self.store_reg(sp, new_sp as u32);
+    }
+
     fn read_to(&mut self, r: Register) {
         if !self.quiet {
             write!(self.stdout, "> ").unwrap();
             self.stdout.flush().unwrap();
         }
-        
+
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
