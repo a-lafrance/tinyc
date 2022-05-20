@@ -8,7 +8,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 pub enum Instruction {
     F1(F1Opcode, Register, Register, i16),
     F2(F2Opcode, Register, Register, Register),
-    F3(F3Opcode, u32 /* this should be signed, but like... only kinda? */),
+    F3(F3Opcode, u32),
 }
 
 impl Instruction {
@@ -20,17 +20,18 @@ impl Instruction {
 
     const OPCODE_MASK: u32 = 0x3F;
     const REG_MASK: u32 = 0x1F;
+    const F1_IMM_MASK: u32 = 0xFFFF;
     const F3_IMM_MASK: u32 = 0x03FFFFFF;
 
     pub fn as_bytes(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(Instruction::INSTR_LEN);
 
-        let instr_as_u32 = match self {
+        let instr_bytes = match self {
             Instruction::F1(opcode, r1, r2, imm) => {
                 ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
                     | ((r1.0 as u32 & Instruction::REG_MASK) << Instruction::R1_SHIFT)
                     | ((r2.0 as u32 & Instruction::REG_MASK) << Instruction::R2_SHIFT)
-                    | (*imm as u32)
+                    | (*imm as u32 & Instruction::F1_IMM_MASK)
             },
 
             Instruction::F2(opcode, r1, r2, r3) => {
@@ -46,7 +47,7 @@ impl Instruction {
             },
         };
 
-        buf.put_u32(instr_as_u32);
+        buf.put_u32(instr_bytes);
         buf.freeze()
     }
 }
@@ -146,7 +147,9 @@ impl Error for InvalidOpcode { }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
-    Addi = 16, Subi, Muli, Divi, Cmpi = 21, Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
+    Addi = 16, Subi, Muli, Divi, Cmpi = 21,
+    Ldw = 32, Pop = 34, Stw = 36, Psh = 38,
+    Beq = 40, Bne, Blt, Bge, Ble, Bgt, Wrl = 53
 }
 
 impl F1Opcode {
@@ -167,6 +170,10 @@ impl Display for F1Opcode {
             F1Opcode::Muli => write!(f, "muli"),
             F1Opcode::Divi => write!(f, "divi"),
             F1Opcode::Cmpi => write!(f, "cmpi"),
+            F1Opcode::Ldw => write!(f, "ldw"),
+            F1Opcode::Pop => write!(f, "pop"),
+            F1Opcode::Stw => write!(f, "stw"),
+            F1Opcode::Psh => write!(f, "psh"),
             F1Opcode::Beq => write!(f, "beq"),
             F1Opcode::Bne => write!(f, "bne"),
             F1Opcode::Blt => write!(f, "blt"),
@@ -184,6 +191,14 @@ impl TryFrom<u8> for F1Opcode {
     fn try_from(bits: u8) -> Result<Self, Self::Error> {
         match bits {
             16 => Ok(F1Opcode::Addi),
+            17 => Ok(F1Opcode::Subi),
+            18 => Ok(F1Opcode::Muli),
+            19 => Ok(F1Opcode::Divi),
+            21 => Ok(F1Opcode::Cmpi),
+            32 => Ok(F1Opcode::Ldw),
+            34 => Ok(F1Opcode::Pop),
+            36 => Ok(F1Opcode::Stw),
+            38 => Ok(F1Opcode::Psh),
             40 => Ok(F1Opcode::Beq),
             41 => Ok(F1Opcode::Bne),
             42 => Ok(F1Opcode::Blt),
@@ -281,6 +296,7 @@ pub struct Register(pub u8);
 impl Register {
     pub const N_REGS: usize = 32;
     pub const R0: Register = Register(0);
+    pub const RSP: Register = Register(29);
     pub const RRET: Register = Register(31);
 }
 
