@@ -20,17 +20,18 @@ impl Instruction {
 
     const OPCODE_MASK: u32 = 0x3F;
     const REG_MASK: u32 = 0x1F;
+    const F1_IMM_MASK: u32 = 0xFFFF;
     const F3_IMM_MASK: u32 = 0x03FFFFFF;
 
     pub fn as_bytes(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(Instruction::INSTR_LEN);
 
-        let instr_as_u32 = match self {
+        let instr_bytes = match self {
             Instruction::F1(opcode, r1, r2, imm) => {
                 ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
                     | ((r1.0 as u32 & Instruction::REG_MASK) << Instruction::R1_SHIFT)
                     | ((r2.0 as u32 & Instruction::REG_MASK) << Instruction::R2_SHIFT)
-                    | (*imm as u32)
+                    | (*imm as u32 & Instruction::F1_IMM_MASK)
             },
 
             Instruction::F2(opcode, r1, r2, r3) => {
@@ -46,7 +47,7 @@ impl Instruction {
             },
         };
 
-        buf.put_u32(instr_as_u32);
+        buf.put_u32(instr_bytes);
         buf.freeze()
     }
 }
