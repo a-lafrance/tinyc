@@ -110,7 +110,7 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
         // and logic to emit prologue/epilogue according to them
     // new register allocation system (trivial allocation algorithm for now)
     // switch mu instruction to bind/move instructions
-    // visitor logic for move/call instructions
+    // codegen logic for move/call instructions
     // extend the codegen system to multiple bodies
         // including a way to store the address of each function
 
@@ -276,6 +276,10 @@ impl IrVisitor for DlxCodegen<'_> {
         }
     }
 
+    fn visit_bind_instr(&mut self, _val: Value, _loc: CCLocation) {
+        todo!();
+    }
+
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
         let offset = self.branch_offset(self.next_instr_addr, dest);
 
@@ -304,7 +308,7 @@ impl IrVisitor for DlxCodegen<'_> {
         self.emit_instr(Instruction::F2(F2Opcode::Ret, Register::R0, Register::R0, Register::R0));
     }
 
-    fn visit_mu_instr(&mut self, _val: Value, _loc: CCLocation) {
+    fn visit_move_instr(&mut self, _val: Value, _loc: CCLocation) {
         todo!();
     }
 
