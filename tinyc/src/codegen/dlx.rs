@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap},
+    collections::{HashMap, HashSet},
     io::{BufWriter, Write},
 };
 use crate::{
@@ -9,6 +9,7 @@ use crate::{
         visit::{self, IrVisitor},
         IrStore,
     },
+    regalloc::{Location, LocationTable},
 };
 use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
@@ -118,11 +119,13 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
 struct DlxCodegen<'b> {
     body: &'b Body,
     buffer: Vec<Instruction>,
+    loc_table: LocationTable<Register>,
     labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
+    reg_live_set: HashSet<Register>,
+    known_consts: HashMap<Value, u32>,
     next_instr_addr: i16, // addr in words of next instr
     unresolved_branches: Vec<UnresolvedBranch>,
     cutoff_point: Option<BasicBlock>,
-    known_consts: HashMap<Value, u32>,
     opt: OptConfig,
 }
 
@@ -131,11 +134,13 @@ impl<'b> DlxCodegen<'b> {
         DlxCodegen {
             body,
             buffer: Vec::new(),
-            labels: HashMap::new(),
+            loc_table: LocationTable::alloc_from(body),
+            labels: HashMap::default(),
+            reg_live_set: HashSet::default(),
+            known_consts: HashMap::default(),
             next_instr_addr: 0,
             unresolved_branches: Vec::new(),
             cutoff_point: None,
-            known_consts: HashMap::new(),
             opt,
         }
     }
@@ -161,8 +166,26 @@ impl<'b> DlxCodegen<'b> {
         self.label_for(dest).map(|l| l - src_addr)
     }
 
+    fn loc_for_val(&self, val: Value) -> Location<Register> {
+        self.loc_table.get(val).expect("invariant violated: missing location for value")
+    }
+
     fn reg_for_val(&self, val: Value) -> Register {
-        Register((val.0 + 1) as u8)
+        match self.loc_for_val(val) {
+            Location::Reg(r) => r,
+            _ => unimplemented!("stack allocations not yet implemented"),
+        }
+    }
+
+    fn get_and_use_reg(&mut self, val: Value) -> Register {
+        let r = self.reg_for_val(val);
+        self.mark_reg_in_use(r);
+
+        r
+    }
+
+    fn mark_reg_in_use(&mut self, reg: Register) {
+        self.reg_live_set.insert(reg);
     }
 
     fn mark_unresolved_branch(&mut self, ip: usize, addr: i16, dest: BasicBlock) {
@@ -282,10 +305,11 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
         let offset = self.branch_offset(self.next_instr_addr, dest);
+        let cmp = self.get_and_use_reg(cmp);
 
         self.emit_instr(Instruction::F1(
             F1Opcode::from(opcode),
-            self.reg_for_val(cmp),
+            cmp,
             Register::R0,
             offset.unwrap_or(0), // either encode branch or fill with temporary value
         ));
@@ -326,24 +350,34 @@ impl IrVisitor for DlxCodegen<'_> {
         }
 
         match self.imm_operands(opcode, src1, src2) {
-            Some((opcode, src, imm)) => self.emit_instr(Instruction::F1(
-                opcode,
-                self.reg_for_val(dest),
-                self.reg_for_val(src),
-                imm,
-            )),
+            Some((opcode, src, imm)) => {
+                let src = self.get_and_use_reg(src);
 
-            None => self.emit_instr(Instruction::F2(
-                F2Opcode::from(opcode),
-                self.reg_for_val(dest),
-                self.reg_for_val(src1),
-                self.reg_for_val(src2),
-            )),
+                self.emit_instr(Instruction::F1(
+                    opcode,
+                    self.reg_for_val(dest),
+                    src,
+                    imm,
+                ));
+            },
+
+            None => {
+                let src1 = self.get_and_use_reg(src1);
+                let src2 = self.get_and_use_reg(src2);
+
+                self.emit_instr(Instruction::F2(
+                    F2Opcode::from(opcode),
+                    self.reg_for_val(dest),
+                    src1,
+                    src2,
+                ));
+            },
         }
     }
 
     fn visit_write_instr(&mut self, src: Value) {
-        self.emit_instr(Instruction::F2(F2Opcode::Wrd, Register::R0, self.reg_for_val(src), Register::R0));
+        let src = self.get_and_use_reg(src);
+        self.emit_instr(Instruction::F2(F2Opcode::Wrd, Register::R0, src, Register::R0));
     }
 
     fn visit_writeln_instr(&mut self) {
