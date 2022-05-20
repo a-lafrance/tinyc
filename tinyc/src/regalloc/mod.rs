@@ -62,7 +62,7 @@ impl RegisterSet for Register {
 
         let true_index = i + 1; // skip the zero register
 
-        if true_index >= FIRST_GP_REG && true_index <= LAST_GP_REG {
+        if (FIRST_GP_REG..=LAST_GP_REG).contains(&true_index) {
             Some(Register(true_index))
         } else {
             None
