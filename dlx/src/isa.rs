@@ -275,7 +275,7 @@ impl TryFrom<u8> for F3Opcode {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Register(pub u8);
 
 impl Register {
