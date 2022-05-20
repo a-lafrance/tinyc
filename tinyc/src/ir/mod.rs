@@ -36,9 +36,12 @@ impl IrStore {
         IrGenerator::gen(&ast, opt)
     }
 
-    // NOTE: this is TEMPORARY
-    pub fn main_body(&mut self) -> Option<Body> {
+    pub fn pop_main_body(&mut self) -> Option<Body> {
         self.bodies.remove(&Keyword::Main.to_string())
+    }
+
+    pub fn into_bodies(self) -> impl Iterator<Item = (String, Body)> {
+        self.bodies.into_iter()
     }
 
     pub fn bodies(&self) -> &HashMap<String, Body> {

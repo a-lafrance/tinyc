@@ -13,13 +13,15 @@ use crate::{
 use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
 pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
-    // for each body:
-        // traverse the cfg for the body, generating instructions for each bb in order
-
-    // but for now, just main
-    let body = ir.main_body().unwrap();
+    // visit main body
+    let body = ir.pop_main_body().expect("invariant violated: program must have main body");
     let mut gen = DlxCodegen::new(&body, opt);
     gen.visit_body(&body);
+
+    // visit every other body
+    for (_, body) in ir.into_bodies() {
+
+    }
 
     for instr in gen.into_buffer().into_iter() {
         writer.write_all(instr.as_bytes().as_ref()).expect("failed to write instr");
@@ -27,10 +29,92 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
 }
 
 
-// my simple crappy attempt at register allocation for now:
-    // for each value V, R(V) is its designated register
-    // yes, this means you can only have 27 values total in the program
-        // this will be fixed later
+// super simple calling conventions:
+    // R20 - R25 are reserved for parameter passing -- this means the first 6 params can be passed in registers
+    // R26 - R27 are (naively) reserved as "load/store temporaries" for transferring values to/from the stack
+    // any more parameters must be passed on the stack in reverse order
+    // the stack frame for a function should look like:
+        /*
+            -------- <- each line (with content) is a word
+            params (as required)
+            ...
+            --------
+            locals (as required)
+            ...
+            --------
+        */
+    // typical call site:
+        // mov R0, R20
+        // psh R21 <- save R21 by pushing it on the stack
+        // mov R6, R21
+        // ... other params
+        // psh R15
+        // ... other params on stack
+        // call f
+        // pop R0 <- pop into nowhere
+        // ... pop params off stack
+        // pop R21 <- load old value back into R21
+    // typical function:
+        // prologue: addi RSP, N <- save space for locals
+        // ... refer to locals on stack as required
+        // ... refer to params on stack as required
+        // epilogue: subi RSP, N <- shrink stack back down
+// calling convention impl plan:
+    // impl ir pass that scans function body and determines its prologue and epilogue
+        // pass must determine how much stack space must be allocated, assign param values to their registers/stack vars, etc
+    // need a simple regalloc table that just links value to its register/memory cell
+        // idea: maintain 2 tables
+            // first is the actual register assignment table: for each value in the program, which location is it assigned to
+                // this is used for knowing which register refers to a value during its lifetime
+            // second is the "register live set": at the current point in the program, which registers are in use and what value is in there
+                // this is useful for knowing which registers must be saved across callpoints
+            // "real" register allocation's only real impact is to populate the register assignment table
+                // this is great because it means that all the infra required to handle locations (stack/register allocations) is already done
+                // so when the time comes to integrate real register allocation, it's just algorithm plug-and-play
+        // idea: implement trivial register allocation independent of codegen directly
+            // meaning, write a trivial register allocator in the regalloc module that just assigns registers sequentially
+            // good register allocation should just mean swapping out the allocation algorithm in that case
+    // when you visit a function, run pass to determine pro/epilogue, then emit prologue, then emit epilogue after visit body
+    // split mu instructions into 2 variants:
+        // "bind" binds the value "out of" the register, i.e. it establishes that from this point forward they're linked
+            // importantly this means you don't have to move anything into the register
+            // use cases: link to params within functions, link to return val post-call
+            // because in both cases, you want to "bind" the value to the register in an "out" fashion
+        // "move" moves the value into the register
+            // establishes that you have to funnel the value into the register (or keep it there in the first place)
+            // use case: pass params to function
+            // because you have to ensure that the value is moved into the register
+        // difference is that binding establishes an "out-flow", where data flows out of that register that represents the value
+            // but, moving establishes an "in-flow", where data must flow into the register at that instruction from the value
+        // formally, in ir these look like:
+            // `mov $0, ArgLoc0` -> move value $0 into the location of the 1st arg
+            // `bind $3, RetValLoc` -> bind the value $3 to the location of the return value
+    // given the 2 separate mu-type instructions, here's how to handle function calls:
+        // whenever you visit a mov instruction, gather a running list of params for the current call
+        // then, when you hit the call instruction, first emit a call prologue for the mov instructions
+        // first, for each mov into a register:
+            // if the register is in use (see above), push its value onto the stack
+            // ...to be continued
+// basically to do all this calling convention stuff:
+    // when you start visiting an ir body:
+        // run ir pass to check calling conventions
+        // emit prologue
+        // visit body as usual
+        // emit epilogue
+    // when you hit a move instruction:
+        // keep a running list of params and put them in the right places before function call
+        // if you need to save registers, do so on the stack
+        // post-call if you had to save registers, pop them back off the stack
+// to do this we'll need, among other things:
+    // ir pass to check calling conventions
+        // and logic to emit prologue/epilogue according to them
+    // new register allocation system (trivial allocation algorithm for now)
+    // switch mu instruction to bind/move instructions
+    // visitor logic for move/call instructions
+    // extend the codegen system to multiple bodies
+        // including a way to store the address of each function
+
+
 struct DlxCodegen<'b> {
     body: &'b Body,
     buffer: Vec<Instruction>,
