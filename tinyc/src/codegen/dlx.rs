@@ -181,6 +181,33 @@ impl<'b> DlxCodegen<'b> {
         self.loc_table.get(val).expect("invariant violated: missing location for value")
     }
 
+    fn reg_for_val(&mut self, val: Value) -> Register {
+        let reg = match self.loc_for_val(val) {
+            Location::Reg(r) => r,
+            Location::Stack(offset) => {
+                self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
+                Self::STACK_TMP1
+            },
+        };
+
+        self.mark_reg_in_use(reg);
+        reg
+    }
+
+    // FIXME: replace with a macro to avoid the gross "this" hack
+    fn do_with_store(&mut self, val: Value, routine: impl FnOnce(&mut Self, Register) -> ()) {
+        let (reg, offset) = match self.loc_for_val(val) {
+            Location::Reg(r) => (r, None),
+            Location::Stack(offset) => (Self::STACK_TMP1, Some(offset)),
+        };
+
+        routine(self, reg);
+
+        if let Some(offset) = offset {
+            self.emit_store(reg, Register::RSP, self.stack_offset(offset as i16));
+        }
+    }
+
     fn mark_reg_in_use(&mut self, reg: Register) {
         self.reg_live_set.insert(reg);
     }
@@ -306,15 +333,8 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
         let offset = self.branch_offset(self.next_instr_addr, dest);
-        let cmp_reg = match self.loc_for_val(cmp) {
-            Location::Reg(r) => r,
-            Location::Stack(offset) => {
-                self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-                Self::STACK_TMP1
-            },
-        };
+        let cmp_reg = self.reg_for_val(cmp);
 
-        self.mark_reg_in_use(cmp_reg);
         self.emit_instr(Instruction::F1(
             F1Opcode::from(opcode),
             cmp_reg,
@@ -332,17 +352,11 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
-        let (dest_reg, offset) = match self.loc_for_val(dest) {
-            Location::Reg(r) => (r, None),
-            Location::Stack(offset) => (Self::STACK_TMP1, Some(offset)),
-        };
-
-        self.mark_const(dest, const_val);
-        self.emit_instr(Instruction::F1(F1Opcode::Addi, dest_reg, Register::R0, const_val as i16));
-
-        if let Some(offset) = offset {
-            self.emit_store(dest_reg, Register::RSP, self.stack_offset(offset as i16));
-        }
+        self.do_with_store(dest, |this, dest_reg| {
+            // passing "this" back into the closure is a hack to get around lifetime stuff
+            this.mark_const(dest, const_val);
+            this.emit_instr(Instruction::F1(F1Opcode::Addi, dest_reg, Register::R0, const_val as i16));
+        });
     }
 
     fn visit_end_instr(&mut self) {
@@ -354,16 +368,9 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_read_instr(&mut self, dest: Value) {
-        let (dest_reg, offset) = match self.loc_for_val(dest) {
-            Location::Reg(r) => (r, None),
-            Location::Stack(offset) => (Self::STACK_TMP1, Some(offset)),
-        };
-
-        self.emit_instr(Instruction::F2(F2Opcode::Rdd, dest_reg, Register::R0, Register::R0));
-
-        if let Some(offset) = offset {
-            self.emit_store(dest_reg, Register::RSP, self.stack_offset(offset as i16));
-        }
+        self.do_with_store(dest, |this, dest_reg| {
+            this.emit_instr(Instruction::F2(F2Opcode::Rdd, dest_reg, Register::R0, Register::R0));
+        });
     }
 
     fn visit_return_instr(&mut self) {
@@ -375,85 +382,36 @@ impl IrVisitor for DlxCodegen<'_> {
             return; // FIXME: worry about this later
         }
 
-        // if dest value stack allocated:
-            // use first stack tmp reg for dest
-            // store into memory after calculation
-        let (dest_reg, dest_offset) = match self.loc_for_val(dest) {
-            Location::Reg(r) => (r, None),
-            Location::Stack(offset) => (Self::STACK_TMP1, Some(offset)),
-        };
+        self.do_with_store(dest, |this, dest_reg| {
+            match this.imm_operands(opcode, src1, src2) {
+                Some((opcode, src, imm)) => {
+                    let src_reg = this.reg_for_val(src);
 
-        // if imm instr selected:
-            // if src value stack allocated:
-                // use first stack tmp (can re-use first even if dest also uses it)
-                // load into stack tmp, use for calculation
-        // else:
-            // if only one src stack allocated:
-                // use first stack tmp for it
-                // load into stack tmp, use for calculation
-            // if both srcs stack allocated:
-                // use first for first, second for second
-                // load both into stack tmps, use for calculation
-        match self.imm_operands(opcode, src1, src2) {
-            Some((opcode, src, imm)) => {
-                let src_reg = match self.loc_for_val(src) {
-                    Location::Reg(r) => r,
-                    Location::Stack(offset) => {
-                        self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-                        Self::STACK_TMP1
-                    },
-                };
+                    this.emit_instr(Instruction::F1(
+                        opcode,
+                        dest_reg,
+                        src_reg,
+                        imm,
+                    ));
+                },
 
-                self.mark_reg_in_use(src_reg);
-                self.emit_instr(Instruction::F1(
-                    opcode,
-                    dest_reg,
-                    src_reg,
-                    imm,
-                ));
-            },
+                None => {
+                    let src1_reg = this.reg_for_val(src1);
+                    let src2_reg = this.reg_for_val(src2);
 
-            None => {
-                let src1_reg = match self.loc_for_val(src1) {
-                    Location::Reg(r) => r,
-                    Location::Stack(offset) => {
-                        self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-                        Self::STACK_TMP1
-                    },
-                };
-
-                let src2_reg = match self.loc_for_val(src2) {
-                    Location::Reg(r) => r,
-                    Location::Stack(offset) => {
-                        self.emit_load(Self::STACK_TMP2, Register::RSP, self.stack_offset(offset as i16));
-                        Self::STACK_TMP2
-                    },
-                };
-
-                self.mark_reg_in_use(src1_reg);
-                self.mark_reg_in_use(src2_reg);
-                self.emit_instr(Instruction::F2(
-                    F2Opcode::from(opcode),
-                    dest_reg,
-                    src1_reg,
-                    src2_reg,
-                ));
-            },
-        }
-
-        if let Some(offset) = dest_offset {
-            self.emit_store(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-        }
+                    this.emit_instr(Instruction::F2(
+                        F2Opcode::from(opcode),
+                        dest_reg,
+                        src1_reg,
+                        src2_reg,
+                    ));
+                },
+            }
+        });
     }
 
     fn visit_write_instr(&mut self, src: Value) {
-        let src_reg = match self.loc_for_val(src) {
-            Location::Reg(r) => r,
-            Location::Stack(offset) => {
-                self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-                Self::STACK_TMP1
-            },
-        };
+        let src_reg = self.reg_for_val(src);
 
         self.mark_reg_in_use(src_reg);
         self.emit_instr(Instruction::F2(F2Opcode::Wrd, Register::R0, src_reg, Register::R0));
