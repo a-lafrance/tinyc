@@ -1,7 +1,10 @@
+#[macro_use] mod utils;
+
 use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Write},
 };
+use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 use crate::{
     driver::opt::OptConfig,
     ir::{
@@ -11,7 +14,6 @@ use crate::{
     },
     regalloc::{Location, LocationTable},
 };
-use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
 
 pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
     // visit main body
@@ -181,31 +183,17 @@ impl<'b> DlxCodegen<'b> {
         self.loc_table.get(val).expect("invariant violated: missing location for value")
     }
 
-    fn reg_for_val(&mut self, val: Value) -> Register {
+    fn reg_for_val(&mut self, val: Value, dest_reg: Register) -> Register {
         let reg = match self.loc_for_val(val) {
             Location::Reg(r) => r,
             Location::Stack(offset) => {
-                self.emit_load(Self::STACK_TMP1, Register::RSP, self.stack_offset(offset as i16));
-                Self::STACK_TMP1
+                self.emit_load(dest_reg, Register::RSP, self.stack_offset(offset as i16));
+                dest_reg
             },
         };
 
         self.mark_reg_in_use(reg);
         reg
-    }
-
-    // FIXME: replace with a macro to avoid the gross "this" hack
-    fn do_with_store(&mut self, val: Value, routine: impl FnOnce(&mut Self, Register) -> ()) {
-        let (reg, offset) = match self.loc_for_val(val) {
-            Location::Reg(r) => (r, None),
-            Location::Stack(offset) => (Self::STACK_TMP1, Some(offset)),
-        };
-
-        routine(self, reg);
-
-        if let Some(offset) = offset {
-            self.emit_store(reg, Register::RSP, self.stack_offset(offset as i16));
-        }
     }
 
     fn mark_reg_in_use(&mut self, reg: Register) {
@@ -333,7 +321,7 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
         let offset = self.branch_offset(self.next_instr_addr, dest);
-        let cmp_reg = self.reg_for_val(cmp);
+        let cmp_reg = self.reg_for_val(cmp, Self::STACK_TMP1);
 
         self.emit_instr(Instruction::F1(
             F1Opcode::from(opcode),
@@ -352,10 +340,9 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
-        self.do_with_store(dest, |this, dest_reg| {
-            // passing "this" back into the closure is a hack to get around lifetime stuff
-            this.mark_const(dest, const_val);
-            this.emit_instr(Instruction::F1(F1Opcode::Addi, dest_reg, Register::R0, const_val as i16));
+        do_with_store!(self, dest => dest_reg, {
+            self.mark_const(dest, const_val);
+            self.emit_instr(Instruction::F1(F1Opcode::Addi, dest_reg, Register::R0, const_val as i16));
         });
     }
 
@@ -368,8 +355,8 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_read_instr(&mut self, dest: Value) {
-        self.do_with_store(dest, |this, dest_reg| {
-            this.emit_instr(Instruction::F2(F2Opcode::Rdd, dest_reg, Register::R0, Register::R0));
+        do_with_store!(self, dest => dest_reg, {
+            self.emit_instr(Instruction::F2(F2Opcode::Rdd, dest_reg, Register::R0, Register::R0));
         });
     }
 
@@ -382,12 +369,12 @@ impl IrVisitor for DlxCodegen<'_> {
             return; // FIXME: worry about this later
         }
 
-        self.do_with_store(dest, |this, dest_reg| {
-            match this.imm_operands(opcode, src1, src2) {
+        do_with_store!(self, dest => dest_reg, {
+            match self.imm_operands(opcode, src1, src2) {
                 Some((opcode, src, imm)) => {
-                    let src_reg = this.reg_for_val(src);
+                    let src_reg = self.reg_for_val(src, Self::STACK_TMP1);
 
-                    this.emit_instr(Instruction::F1(
+                    self.emit_instr(Instruction::F1(
                         opcode,
                         dest_reg,
                         src_reg,
@@ -396,10 +383,10 @@ impl IrVisitor for DlxCodegen<'_> {
                 },
 
                 None => {
-                    let src1_reg = this.reg_for_val(src1);
-                    let src2_reg = this.reg_for_val(src2);
+                    let src1_reg = self.reg_for_val(src1, Self::STACK_TMP1);
+                    let src2_reg = self.reg_for_val(src2, Self::STACK_TMP2);
 
-                    this.emit_instr(Instruction::F2(
+                    self.emit_instr(Instruction::F2(
                         F2Opcode::from(opcode),
                         dest_reg,
                         src1_reg,
@@ -411,7 +398,7 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_write_instr(&mut self, src: Value) {
-        let src_reg = self.reg_for_val(src);
+        let src_reg = self.reg_for_val(src, Self::STACK_TMP1);
 
         self.mark_reg_in_use(src_reg);
         self.emit_instr(Instruction::F2(F2Opcode::Wrd, Register::R0, src_reg, Register::R0));
