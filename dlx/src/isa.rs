@@ -296,6 +296,7 @@ pub struct Register(pub u8);
 impl Register {
     pub const N_REGS: usize = 32;
     pub const R0: Register = Register(0);
+    pub const RFP: Register = Register(28);
     pub const RSP: Register = Register(29);
     pub const RRET: Register = Register(31);
 }

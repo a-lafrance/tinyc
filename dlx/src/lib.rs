@@ -1,4 +1,5 @@
 pub mod isa;
+pub mod utils;
 
 use std::{
     cmp::Ordering,
@@ -32,10 +33,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         let mut buf = [0u8; 4]; // allocate a 4-byte buffer for each instruction
 
         // read 4 byte chunks and decode instructions until eof
-        while reader.read(&mut buf)? > 0 {
-            // NOTE: took a short cut here and ignored short counts
-            let instr_bytes = u32::from_be_bytes(buf);
-            let instr = Instruction::try_from(instr_bytes)?;
+        while let Some(instr) = utils::read_instr(&mut reader, &mut buf)? {
             instr_mem.push(instr);
         }
 
@@ -48,7 +46,10 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             stdout,
             quiet,
         };
-        e.store_reg(Register::RSP, (e.data_mem.len() - 1) as u32);
+
+        let stack_start = e.data_mem.len() as u32 - 1;
+        e.store_reg(Register::RSP, stack_start);
+        e.store_reg(Register::RFP, stack_start);
 
         Ok(e)
     }

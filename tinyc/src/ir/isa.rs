@@ -145,7 +145,6 @@ impl Instruction {
             Instruction::Const(_, dest) => Some(*dest),
             Instruction::Read(dest) => Some(*dest),
             Instruction::StoredBinaryOp(_, _, _, dest) => Some(*dest),
-            Instruction::Bind(val, _) => Some(*val),
             _ => None,
         }
     }
@@ -156,7 +155,6 @@ impl Instruction {
         match self {
             Instruction::StoredBinaryOp(_, src1, src2, _) => vec![*src1, *src2],
             Instruction::Write(src) => vec![*src],
-            Instruction::Move(val, _) => vec![*val],
             Instruction::Branch(_, cmp, _) => vec![*cmp],
             _ => vec![],
         }
