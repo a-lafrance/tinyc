@@ -44,14 +44,12 @@ impl<R: RegisterSet> LocationTable<R> {
     pub(self) fn insert(&mut self, val: Value, loc: Location<R>) {
         self.mapping.insert(val, loc);
 
-        match loc {
-            Location::Stack(offset) => if offset > self.total_local_offset {
+        if let Location::Stack(offset) = loc {
+            if offset > self.total_local_offset {
                 self.total_local_offset = offset;
             } else if offset < self.total_arg_offset {
                 self.total_arg_offset = offset;
             }
-
-            _ => {}
         }
     }
 }
