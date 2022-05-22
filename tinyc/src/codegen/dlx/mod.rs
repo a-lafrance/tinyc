@@ -14,6 +14,7 @@ use crate::{
     },
     regalloc::{Location, LocationTable},
 };
+use self::utils::UnresolvedBranch;
 
 pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
     // visit main body
@@ -33,14 +34,17 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
 
 
 // super simple calling conventions:
-    // R20 - R25 are reserved for parameter passing -- this means the first 6 params can be passed in registers
-    // R26 - R27 are (naively) reserved as "load/store temporaries" for transferring values to/from the stack
+    // R20 - R24 are reserved for parameter passing -- this means the first 5 params can be passed in registers
+    // R25 - R26 are (naively) reserved as "load/store temporaries" for transferring values to/from the stack
+    // R27 is the return value register, where the return value of a function should be stored
     // any more parameters must be passed on the stack in reverse order
     // the stack frame for a function should look like:
         /*
             -------- <- each line (with content) is a word
             params (as required)
             ...
+            --------
+            prev fp
             --------
             locals (as required)
             ...
@@ -58,25 +62,20 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
         // ... pop params off stack
         // pop R21 <- load old value back into R21
     // typical function:
-        // prologue: addi RSP, N <- save space for locals
+        // prologue:
+            // psh RFP
+            // mov RSP -> RFP
+            // addi RSP, N <- save space for locals
         // ... refer to locals on stack as required
         // ... refer to params on stack as required
-        // epilogue: subi RSP, N <- shrink stack back down
+        // IMPORTANT: you have to jump to the epilogue to return, rather than just returning
+        // epilogue:
+            // subi RSP, N <- shrink stack back down
+            // pop RFP
+            // ret
 // calling convention impl plan:
     // impl ir pass that scans function body and determines its prologue and epilogue
         // pass must determine how much stack space must be allocated, assign param values to their registers/stack vars, etc
-    // need a simple regalloc table that just links value to its register/memory cell
-        // idea: maintain 2 tables
-            // first is the actual register assignment table: for each value in the program, which location is it assigned to
-                // this is used for knowing which register refers to a value during its lifetime
-            // second is the "register live set": at the current point in the program, which registers are in use and what value is in there
-                // this is useful for knowing which registers must be saved across callpoints
-            // "real" register allocation's only real impact is to populate the register assignment table
-                // this is great because it means that all the infra required to handle locations (stack/register allocations) is already done
-                // so when the time comes to integrate real register allocation, it's just algorithm plug-and-play
-        // idea: implement trivial register allocation independent of codegen directly
-            // meaning, write a trivial register allocator in the regalloc module that just assigns registers sequentially
-            // good register allocation should just mean swapping out the allocation algorithm in that case
     // when you visit a function, run pass to determine pro/epilogue, then emit prologue, then emit epilogue after visit body
     // split mu instructions into 2 variants:
         // "bind" binds the value "out of" the register, i.e. it establishes that from this point forward they're linked
@@ -111,8 +110,6 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
 // to do this we'll need, among other things:
     // ir pass to check calling conventions
         // and logic to emit prologue/epilogue according to them
-    // new register allocation system (trivial allocation algorithm for now)
-    // switch mu instruction to bind/move instructions
     // codegen logic for move/call instructions
     // extend the codegen system to multiple bodies
         // including a way to store the address of each function
@@ -132,8 +129,9 @@ struct DlxCodegen<'b> {
 }
 
 impl<'b> DlxCodegen<'b> {
-    pub const STACK_TMP1: Register = Register(26);
-    pub const STACK_TMP2: Register = Register(27);
+    pub const STACK_TMP1: Register = Register(25);
+    pub const STACK_TMP2: Register = Register(26);
+    const FP_OFFSET: i16 = -4;
 
     pub fn new(body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
         DlxCodegen {
@@ -167,6 +165,64 @@ impl<'b> DlxCodegen<'b> {
         self.emit_instr(Instruction::F1(F1Opcode::Stw, src, base, offset));
     }
 
+    fn emit_push(&mut self, src: Register) {
+        self.emit_instr(Instruction::F1(F1Opcode::Psh, src, Register::RSP, Self::FP_OFFSET));
+    }
+
+    fn emit_pop(&mut self, dest: Register) {
+        self.emit_instr(Instruction::F1(F1Opcode::Psh, dest, Register::RSP, Self::FP_OFFSET));
+    }
+
+    fn emit_reg2reg_move(&mut self, src: Register, dest: Register) {
+        self.emit_instr(Instruction::F1(F1Opcode::Addi, dest, src, 0));
+    }
+
+    fn emit_return(&mut self) {
+        self.emit_instr(Instruction::F2(F2Opcode::Ret, Register::R0, Register::R0, Register::RRET));
+    }
+
+    fn emit_prologue(&mut self) {
+        // Only emit a prologue if the stack is actually used
+        if self.loc_table.stack_in_use() {
+            // Push old fp onto the stack and update it
+            self.emit_push(Register::RFP);
+            self.emit_reg2reg_move(Register::RSP, Register::RFP);
+
+            let total_local_offset = self.loc_table.total_local_offset() as i16;
+
+            if total_local_offset > 0 {
+                // If locals are allocated on the stack, move the stack pointer up
+                self.emit_instr(Instruction::F1(
+                    F1Opcode::Addi,
+                    Register::RSP,
+                    Register::RSP,
+                    total_local_offset
+                ));
+            }
+        }
+    }
+
+    fn emit_epilogue(&mut self) {
+        // Only emit anything if the stack is actually used
+        if self.loc_table.stack_in_use() {
+            let total_local_offset = self.loc_table.total_local_offset() as i16;
+
+            if total_local_offset > 0 {
+                // If locals are allocated on the stack, move the stack pointer back down
+                self.emit_instr(Instruction::F1(
+                    F1Opcode::Subi,
+                    Register::RSP,
+                    Register::RSP,
+                    total_local_offset
+                ));
+            }
+
+            // Pop old fp off the stack and return
+            self.emit_pop(Register::RFP);
+            self.emit_return();
+        }
+    }
+
     fn mark_label(&mut self, bb: BasicBlock) {
         self.labels.insert(bb, self.next_instr_addr);
     }
@@ -187,9 +243,9 @@ impl<'b> DlxCodegen<'b> {
         let reg = match self.loc_for_val(val) {
             Location::Reg(r) => r,
             Location::Stack(offset) => {
-                self.emit_load(dest_reg, Register::RSP, self.stack_offset(offset as i16));
+                self.emit_load(dest_reg, Register::RFP, self.stack_offset(offset as i16));
                 dest_reg
-            },
+            }
         };
 
         self.mark_reg_in_use(reg);
@@ -264,10 +320,11 @@ impl<'b> DlxCodegen<'b> {
 impl IrVisitor for DlxCodegen<'_> {
     fn visit_body(&mut self, body: &Body) {
         if let Some((root, root_bb)) = body.root_block_entry() {
+            self.emit_prologue();
             self.visit_basic_block(root, root_bb);
+            self.resolve_branches();
+            self.emit_epilogue();
         }
-
-        self.resolve_branches();
     }
 
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
@@ -407,12 +464,4 @@ impl IrVisitor for DlxCodegen<'_> {
     fn visit_writeln_instr(&mut self) {
         self.emit_instr(Instruction::F1(F1Opcode::Wrl, Register::R0, Register::R0, 0));
     }
-}
-
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct UnresolvedBranch {
-    pub ip: usize,
-    pub addr: i16,
-    pub dest: BasicBlock,
 }
