@@ -11,6 +11,7 @@ use crate::ir::{
 #[derive(Debug)]
 pub struct LocationTable<R: RegisterSet> {
     mapping: HashMap<Value, Location<R>>,
+    cc_mapping: HashMap<CCLocation, Location<R>>,
     total_local_offset: isize,
     total_arg_offset: isize,
 }
@@ -26,6 +27,10 @@ impl<R: RegisterSet> LocationTable<R> {
 
     pub fn get(&self, val: Value) -> Option<Location<R>> {
         self.mapping.get(&val).copied()
+    }
+
+    pub fn get_from_cc(&self, cc_loc: CCLocation) -> Option<Location<R>> {
+        self.cc_mapping.get(&cc_loc).copied()
     }
 
     pub fn total_local_offset(&self) -> isize {
@@ -52,12 +57,18 @@ impl<R: RegisterSet> LocationTable<R> {
             }
         }
     }
+
+    pub(self) fn insert_from_cc(&mut self, val: Value, loc: Location<R>, cc_loc: CCLocation) {
+        self.insert(val, loc);
+        self.cc_mapping.insert(cc_loc, loc);
+    }
 }
 
 impl<R: RegisterSet> Default for LocationTable<R> {
     fn default() -> Self {
         LocationTable {
             mapping: HashMap::default(),
+            cc_mapping: HashMap::default(),
             total_local_offset: 0,
             total_arg_offset: 0,
         }
@@ -147,8 +158,8 @@ impl<R: RegisterSet> IrVisitor for LocationTableBuilder<'_, R> {
                     }
                 };
 
-                self.table.insert(*val, loc);
-            }
+                self.table.insert_from_cc(*val, loc, *cc_loc);
+            },
 
             instr => if let Some(val) = instr.result_val() {
                 let loc = match R::from_index(self.next_reg_index) {

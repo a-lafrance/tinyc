@@ -114,7 +114,20 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn emit_loc_to_loc_move(&mut self, src: DlxLocation, dest: DlxLocation) {
-        todo!();
+        match src {
+            Location::Reg(src_reg) => match dest {
+                Location::Reg(dest_reg) => self.emit_reg_to_reg_move(src_reg, dest_reg),
+                Location::Stack(dest_offset) => self.emit_store(src_reg, Register::RFP, dest_offset as i16),
+            }
+
+            Location::Stack(src_offset) => match dest {
+                Location::Reg(dest_reg) => self.emit_load(dest_reg, Register::RFP, src_offset as i16),
+                Location::Stack(dest_offset) => {
+                    self.emit_load(Self::STACK_TMP1, Register::RFP, src_offset as i16);
+                    self.emit_store(Self::STACK_TMP1, Register::RFP, dest_offset as i16);
+                }
+            }
+        }
     }
 
     fn emit_return(&mut self) {
@@ -163,14 +176,21 @@ impl<'b> DlxCodegen<'b> {
         }
     }
 
-    fn emit_stack_args(&mut self) {
-        let args: Vec<_> = self.current_stack_args.drain(..).rev().collect();
-        
-        for arg in args.into_iter() {
+    fn emit_push_stack_args(&mut self) {
+        // FIXME: i feel like i should be able to avoid this clone
+        for arg in self.current_stack_args.clone().iter().copied() {
             // force arg into register and push onto stack
             let src_reg = self.reg_for_val(arg, Self::STACK_TMP1);
             self.emit_push(src_reg);
         }
+    }
+
+    fn emit_pop_stack_args(&mut self) {
+        for _ in 0..self.current_stack_args.len() {
+            self.emit_pop(Self::STACK_TMP1); // pop into useless register (idk if you can pop into nowhere)
+        }
+
+        self.current_stack_args.clear();
     }
 
     fn mark_label(&mut self, bb: BasicBlock) {
@@ -190,7 +210,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn cc_location(&self, loc: CCLocation) -> DlxLocation {
-        todo!(); // store info for this in the loc table
+        self.loc_table.get_from_cc(loc).expect("invariant violated: missing location for calling convention")
     }
 
     fn reg_for_val(&mut self, val: Value, dest_reg: Register) -> Register {
@@ -364,13 +384,9 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_call_instr(&mut self, _func: &str) {
-        // when you hit a call instruction:
-            // first emit all the stack param pushes in reverse order
-            // then clear the stack param list
-            // then emit the call instruction
-        self.emit_stack_args();
+        self.emit_push_stack_args();
         self.emit_instr(Instruction::F3(F3Opcode::Jsr, todo!()));
-        // pop stack args
+        self.emit_pop_stack_args();
         // pop saved registers
     }
 

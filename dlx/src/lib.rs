@@ -235,7 +235,9 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn store_reg(&mut self, r: Register, val: u32) {
-        self.registers[r.0 as usize] = val;
+        if r.0 > 0 {
+            self.registers[r.0 as usize] = val;
+        }
     }
 
     fn load_mem(&self, addr: u32) -> u32 {
