@@ -24,3 +24,9 @@ pub struct UnresolvedBranch {
     pub addr: i16,
     pub dest: BasicBlock,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnresolvedCall {
+    pub ip: usize,
+    pub dest: String,
+}

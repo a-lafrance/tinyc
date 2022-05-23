@@ -2,10 +2,10 @@ default:
 	just -l
 
 emu BIN *ARGS:
-    cargo run -p dlx --features cli --bin emu -- {{ ARGS }} {{ BIN }}
+    cargo run -p dlx --features cli --bin emu --quiet -- {{ ARGS }} {{ BIN }}
 
 viz BIN *ARGS:
-    cargo run -p dlx --features cli --bin viz -- {{ ARGS }} {{ BIN }}
+    cargo run -p dlx --features cli --bin viz --quiet -- {{ ARGS }} {{ BIN }}
 
 build SRC *ARGS:
 	cargo run -p tinyc -- {{ ARGS }} {{ SRC }}

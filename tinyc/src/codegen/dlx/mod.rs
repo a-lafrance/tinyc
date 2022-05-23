@@ -13,52 +13,35 @@ use crate::{
         IrStore,
     },
     regalloc::{Location, LocationTable, RegisterSet},
+    utils::Keyword,
 };
-use self::utils::UnresolvedBranch;
+use self::utils::{UnresolvedBranch, UnresolvedCall};
 
-pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
-    // visit main body
-    let body = ir.pop_main_body().expect("invariant violated: program must have main body");
-    let mut gen = DlxCodegen::new(&body, opt);
-    gen.visit_body(&body);
+pub fn gen_code<W: Write>(ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
+    let instr_buffer = DlxCodegen::gen_from_ir(ir, opt);
 
-    // visit every other body
-    for (_, body) in ir.into_bodies() {
-
-    }
-
-    for instr in gen.into_buffer().into_iter() {
+    for instr in instr_buffer.into_iter() {
         writer.write_all(instr.as_bytes().as_ref()).expect("failed to write instr");
     }
 }
 
+// still todo:
+    // saving registers
+    // register allocation is messed up, need to ensure you can't assign registers to more than one value
+    // unconditional branches just are not getting buffered for some reason
+    // need to do the whole jump to epilogue instead of just returning thing
 
-// super simple calling conventions:
-    // typical call site:
-        // mov R0, R20
-        // psh R21 <- save R21 by pushing it on the stack
-        // mov R6, R21
-        // ... other params
-        // psh R15
-        // ... other params on stack
-        // call f
-        // pop R0 <- pop into nowhere
-        // ... pop params off stack
-        // pop R21 <- load old value back into R21
-// To handle function calls:
 
 type DlxLocation = Location<Register>;
 
 struct DlxCodegen<'b> {
-    body: &'b Body,
+    current_context: BodyContext<'b>,
     buffer: Vec<Instruction>,
-    loc_table: LocationTable<Register>,
-    labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
-    reg_live_set: HashSet<Register>,
-    known_consts: HashMap<Value, u32>,
+    body_labels: HashMap<String, u32>,
     current_stack_args: Vec<Value>,
     next_instr_addr: i16, // addr in words of next instr
     unresolved_branches: Vec<UnresolvedBranch>,
+    unresolved_calls: Vec<UnresolvedCall>,
     cutoff_point: Option<BasicBlock>,
     opt: OptConfig,
 }
@@ -68,24 +51,53 @@ impl<'b> DlxCodegen<'b> {
     pub const STACK_TMP2: Register = Register(26);
     const FP_OFFSET: i16 = -4;
 
-    pub fn new(body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
-        DlxCodegen {
-            body,
+    pub fn gen_from_ir(mut ir: IrStore, opt: OptConfig) -> Vec<Instruction> {
+        // visit main body
+        let main_body = ir.pop_main_body().expect("invariant violated: program must have main body");
+        let mut gen = DlxCodegen::from_main(&main_body, opt);
+
+        // visit every other body
+        for (name, body) in ir.bodies() {
+            gen.visit_named_body(name.to_string(), body);
+        }
+
+        gen.resolve_calls();
+        gen.into_buffer()
+    }
+
+    pub fn from_main(main_body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
+        let mut gen = DlxCodegen {
+            current_context: BodyContext::from(main_body),
             buffer: Vec::with_capacity(64),
-            loc_table: LocationTable::alloc_from(body),
-            labels: HashMap::default(),
-            reg_live_set: HashSet::default(),
-            known_consts: HashMap::default(),
+            body_labels: HashMap::default(),
             current_stack_args: Vec::with_capacity(8),
             next_instr_addr: 0,
-            unresolved_branches: Vec::with_capacity(16),
+            unresolved_branches: Vec::with_capacity(32),
+            unresolved_calls: Vec::with_capacity(32),
             cutoff_point: None,
             opt,
-        }
+        };
+
+        gen.visit_named_body(Keyword::Main.to_string(), main_body);
+        gen
     }
 
     pub fn into_buffer(self) -> Vec<Instruction> {
         self.buffer
+    }
+
+    pub fn visit_named_body(&mut self, name: String, body: &'b Body) {
+        self.current_context = BodyContext::from(body);
+        self.insert_body_label(name);
+        self.visit_body(body);
+    }
+
+    fn current_body(&self) -> &'b Body {
+        self.current_context.body
+    }
+
+    fn insert_body_label(&mut self, name: String) {
+        self.body_labels.insert(name, self.next_instr_addr as u32 /* FIXME: might be unsafe */);
     }
 
     fn emit_instr(&mut self, instr: Instruction) {
@@ -110,21 +122,25 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn emit_reg_to_reg_move(&mut self, src: Register, dest: Register) {
-        self.emit_instr(Instruction::F1(F1Opcode::Addi, dest, src, 0));
+        if src != dest {
+            self.emit_instr(Instruction::F1(F1Opcode::Addi, dest, src, 0));
+        }
     }
 
     fn emit_loc_to_loc_move(&mut self, src: DlxLocation, dest: DlxLocation) {
-        match src {
-            Location::Reg(src_reg) => match dest {
-                Location::Reg(dest_reg) => self.emit_reg_to_reg_move(src_reg, dest_reg),
-                Location::Stack(dest_offset) => self.emit_store(src_reg, Register::RFP, dest_offset as i16),
-            }
+        if src != dest {
+            match src {
+                Location::Reg(src_reg) => match dest {
+                    Location::Reg(dest_reg) => self.emit_reg_to_reg_move(src_reg, dest_reg),
+                    Location::Stack(dest_offset) => self.emit_store(src_reg, Register::RFP, dest_offset as i16),
+                }
 
-            Location::Stack(src_offset) => match dest {
-                Location::Reg(dest_reg) => self.emit_load(dest_reg, Register::RFP, src_offset as i16),
-                Location::Stack(dest_offset) => {
-                    self.emit_load(Self::STACK_TMP1, Register::RFP, src_offset as i16);
-                    self.emit_store(Self::STACK_TMP1, Register::RFP, dest_offset as i16);
+                Location::Stack(src_offset) => match dest {
+                    Location::Reg(dest_reg) => self.emit_load(dest_reg, Register::RFP, src_offset as i16),
+                    Location::Stack(dest_offset) => {
+                        self.emit_load(Self::STACK_TMP1, Register::RFP, src_offset as i16);
+                        self.emit_store(Self::STACK_TMP1, Register::RFP, dest_offset as i16);
+                    }
                 }
             }
         }
@@ -136,12 +152,12 @@ impl<'b> DlxCodegen<'b> {
 
     fn emit_prologue(&mut self) {
         // Only emit a prologue if the stack is actually used
-        if self.loc_table.stack_in_use() {
+        if self.current_context.loc_table.stack_in_use() {
             // Push old fp onto the stack and update it
             self.emit_push(Register::RFP);
             self.emit_reg_to_reg_move(Register::RSP, Register::RFP);
 
-            let total_local_offset = self.loc_table.total_local_offset() as i16;
+            let total_local_offset = self.current_context.loc_table.total_local_offset() as i16;
 
             if total_local_offset > 0 {
                 // If locals are allocated on the stack, move the stack pointer up
@@ -156,9 +172,10 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn emit_epilogue(&mut self) {
+        // TODO: mark addr of epilogue
         // Only emit anything if the stack is actually used
-        if self.loc_table.stack_in_use() {
-            let total_local_offset = self.loc_table.total_local_offset() as i16;
+        if self.current_context.loc_table.stack_in_use() {
+            let total_local_offset = self.current_context.loc_table.total_local_offset() as i16;
 
             if total_local_offset > 0 {
                 // If locals are allocated on the stack, move the stack pointer back down
@@ -172,8 +189,9 @@ impl<'b> DlxCodegen<'b> {
 
             // Pop old fp off the stack and return
             self.emit_pop(Register::RFP);
-            self.emit_return();
         }
+
+        self.emit_return();
     }
 
     fn emit_push_stack_args(&mut self) {
@@ -194,11 +212,15 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn mark_label(&mut self, bb: BasicBlock) {
-        self.labels.insert(bb, self.next_instr_addr);
+        self.current_context.labels.insert(bb, self.next_instr_addr);
     }
 
     fn label_for(&self, bb: BasicBlock) -> Option<i16> {
-        self.labels.get(&bb).copied()
+        self.current_context.labels.get(&bb).copied()
+    }
+
+    fn label_for_body(&self, name: &str) -> Option<u32> {
+        self.body_labels.get(name).copied()
     }
 
     fn branch_offset(&self, src_addr: i16, dest: BasicBlock) -> Option<i16> {
@@ -206,11 +228,11 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn loc_for_val(&self, val: Value) -> DlxLocation {
-        self.loc_table.get(val).expect("invariant violated: missing location for value")
+        self.current_context.loc_table.get(val).expect("invariant violated: missing location for value")
     }
 
     fn cc_location(&self, loc: CCLocation) -> DlxLocation {
-        self.loc_table.get_from_cc(loc).expect("invariant violated: missing location for calling convention")
+        self.current_context.loc_table.get_from_cc(loc).expect("invariant violated: missing location for calling convention")
     }
 
     fn reg_for_val(&mut self, val: Value, dest_reg: Register) -> Register {
@@ -227,7 +249,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn mark_reg_in_use(&mut self, reg: Register) {
-        self.reg_live_set.insert(reg);
+        self.current_context.reg_live_set.insert(reg);
     }
 
     fn mark_unresolved_branch(&mut self, ip: usize, addr: i16, dest: BasicBlock) {
@@ -246,10 +268,29 @@ impl<'b> DlxCodegen<'b> {
                 _ => unreachable!(),
             }
         }
+
+        self.unresolved_branches.clear();
+    }
+
+    fn mark_unresolved_call(&mut self, ip: usize, dest: String) {
+        self.unresolved_calls.push(UnresolvedCall { ip, dest });
+    }
+
+    fn resolve_calls(&mut self) {
+        for call in self.unresolved_calls.iter() {
+            let dest_addr = self.label_for_body(&call.dest).expect("missing label for body");
+
+            match self.buffer[call.ip] {
+                Instruction::F3(F3Opcode::Jsr, ref mut dest) => *dest = dest_addr,
+                _ => unreachable!(),
+            }
+        }
+
+        self.unresolved_calls.clear();
     }
 
     fn load_and_visit_basic_block(&mut self, bb: BasicBlock) {
-        self.visit_basic_block(bb, self.body.basic_block_data(bb));
+        self.visit_basic_block(bb, self.current_body().basic_block_data(bb));
     }
 
     fn imm_operands(
@@ -279,11 +320,11 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn mark_const(&mut self, val: Value, const_val: u32) {
-        self.known_consts.insert(val, const_val);
+        self.current_context.known_consts.insert(val, const_val);
     }
 
     fn const_for_val(&self, val: Value) -> Option<u32> {
-        self.known_consts.get(&val).copied()
+        self.current_context.known_consts.get(&val).copied()
     }
 
     fn stack_offset(&self, offset: i16) -> i16 {
@@ -307,7 +348,7 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_basic_block(&mut self, bb: BasicBlock, bb_data: &BasicBlockData) {
         // emit label for basic block
-        if Some(bb) != self.cutoff_point && !self.labels.contains_key(&bb) {
+        if Some(bb) != self.cutoff_point && !self.current_context.labels.contains_key(&bb) {
             self.mark_label(bb);
             visit::walk_basic_block(self, bb_data);
 
@@ -360,11 +401,7 @@ impl IrVisitor for DlxCodegen<'_> {
                 // see ret val bind above
         let src_loc = self.cc_location(cc_loc);
         let dest_loc = self.loc_for_val(dest);
-
-        if src_loc != dest_loc {
-            // move out of loc into dest loc
-            self.emit_loc_to_loc_move(src_loc, dest_loc);
-        }
+        self.emit_loc_to_loc_move(src_loc, dest_loc);
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
@@ -383,11 +420,12 @@ impl IrVisitor for DlxCodegen<'_> {
         }
     }
 
-    fn visit_call_instr(&mut self, _func: &str) {
+    fn visit_call_instr(&mut self, func: &str) {
         self.emit_push_stack_args();
-        self.emit_instr(Instruction::F3(F3Opcode::Jsr, todo!()));
+        self.mark_unresolved_call(self.next_instr_addr as usize, func.to_string());
+        self.emit_instr(Instruction::F3(F3Opcode::Jsr, 0));
         self.emit_pop_stack_args();
-        // pop saved registers
+        // TODO: pop saved registers
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
@@ -431,7 +469,8 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_return_instr(&mut self) {
-        self.emit_instr(Instruction::F2(F2Opcode::Ret, Register::R0, Register::R0, Register::RRET));
+        // actually, have to branch to epilogue instead
+
     }
 
     fn visit_stored_binop_instr(&mut self, opcode: StoredBinaryOpcode, src1: Value, src2: Value, dest: Value) {
@@ -476,5 +515,27 @@ impl IrVisitor for DlxCodegen<'_> {
 
     fn visit_writeln_instr(&mut self) {
         self.emit_instr(Instruction::F1(F1Opcode::Wrl, Register::R0, Register::R0, 0));
+    }
+}
+
+
+// NOTE: i'm accessing these fields directly all over the place; is that valid?
+struct BodyContext<'b> {
+    pub body: &'b Body,
+    pub loc_table: LocationTable<Register>,
+    pub labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
+    pub reg_live_set: HashSet<Register>,
+    pub known_consts: HashMap<Value, u32>,
+}
+
+impl<'b> From<&'b Body> for BodyContext<'b> {
+    fn from(body: &'b Body) -> BodyContext {
+        BodyContext {
+            body,
+            loc_table: LocationTable::alloc_from(body),
+            labels: HashMap::default(),
+            reg_live_set: HashSet::default(),
+            known_consts: HashMap::default(),
+        }
     }
 }
