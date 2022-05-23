@@ -1,0 +1,13 @@
+main
+
+void function ReadAndPrint();
+{
+    call OutputNum(call InputNum());
+    call OutputNewLine();
+};
+
+{
+    call ReadAndPrint();
+    call ReadAndPrint();
+    call OutputNewLine();
+}.

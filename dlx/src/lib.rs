@@ -8,7 +8,7 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader, Read, Write},
 };
-use self::isa::{F1Opcode, F2Opcode, Instruction, InstrDecodeError, Register};
+use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, InstrDecodeError, Register};
 
 const MEM_SIZE: usize = 256;
 
@@ -59,11 +59,14 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         loop {
             match self.exec_current_instr() {
                 ControlFlow::Continue => (),
+                ControlFlow::Quit => break,
+
                 ControlFlow::Branch(offset) => {
                     let pc = &mut (self.pc as isize);
                     *pc += offset as isize;
                 }
-                ControlFlow::Quit => break,
+
+                ControlFlow::Jump(dest) => self.pc = dest,
             }
         }
     }
@@ -75,25 +78,29 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Subi, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 - imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Muli, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 * imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Divi, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 / imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
                 let src = self.load_reg(src) as i64;
                 let result = match src.cmp(&(imm as i64)) {
@@ -104,12 +111,14 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Ldw, dest, base, offset) => {
                 let addr = (self.load_reg(base) as i32) + (offset as i32);
                 self.load_mem_into_reg(addr as u32, dest);
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Pop, dest, sp, size) => {
                 // load from sp into dest
                 // inc sp by size
@@ -117,88 +126,102 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.update_sp(sp, size);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Stw, src, base, offset) => {
                 let addr = (self.load_reg(base) as i32) + (offset as i32);
                 self.store_mem_from_reg(addr as u32, src);
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Psh, src, sp, size) => {
                 self.update_sp(sp, size);
                 self.store_mem_from_reg(self.load_reg(sp), src);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) == 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) != 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Ble, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) <= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bgt, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) > 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) < 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) >= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Wrl, _, _, _) => {
                 self.writeln();
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Add, dest, src1, src2) => {
                 let result = self.load_reg(src1) + self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Sub, dest, src1, src2) => {
                 let result = self.load_reg(src1) - self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Mul, dest, src1, src2) => {
                 let result = self.load_reg(src1) * self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Div, dest, src1, src2) => {
                 let result = self.load_reg(src1) / self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
                 let result = match lhs.cmp(&rhs) {
                     Ordering::Less => 0,
@@ -208,18 +231,29 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Ret, _, _, Register::R0) => ControlFlow::Quit,
-            Instruction::F2(F2Opcode::Ret, _, _, _dest) => todo!(),
+
+            Instruction::F2(F2Opcode::Ret, _, _, dest) => {
+                let dest_addr = self.load_reg(dest);
+                ControlFlow::Jump(dest_addr as usize)
+            }
+
             Instruction::F2(F2Opcode::Rdd, dest, _, _) => {
                 self.read_to(dest);
                 ControlFlow::Continue
             }
+
             Instruction::F2(F2Opcode::Wrd, _, src, _) => {
                 self.write_from(src);
                 ControlFlow::Continue
-            },
-            Instruction::F3(_, _) => unimplemented!("F3 instructions not yet implemented"),
+            }
+
+            Instruction::F3(F3Opcode::Jsr, dest) => {
+                self.store_reg(Register::RRET, self.pc as u32);
+                ControlFlow::Jump(dest as usize)
+            }
         }
     }
 
@@ -289,6 +323,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 pub enum ControlFlow {
     Continue,
     Branch(i16),
+    Jump(usize),
     Quit,
 }
 
