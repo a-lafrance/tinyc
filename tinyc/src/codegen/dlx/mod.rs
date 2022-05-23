@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Write},
 };
-use dlx::isa::{F1Opcode, F2Opcode, Instruction, Register};
+use dlx::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, Register};
 use crate::{
     driver::opt::OptConfig,
     ir::{
@@ -12,7 +12,7 @@ use crate::{
         visit::{self, IrVisitor},
         IrStore,
     },
-    regalloc::{Location, LocationTable},
+    regalloc::{Location, LocationTable, RegisterSet},
 };
 use self::utils::UnresolvedBranch;
 
@@ -34,22 +34,6 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
 
 
 // super simple calling conventions:
-    // R20 - R24 are reserved for parameter passing -- this means the first 5 params can be passed in registers
-    // R25 - R26 are (naively) reserved as "load/store temporaries" for transferring values to/from the stack
-    // R27 is the return value register, where the return value of a function should be stored
-    // any more parameters must be passed on the stack in reverse order
-    // the stack frame for a function should look like:
-        /*
-            -------- <- each line (with content) is a word
-            params (as required)
-            ...
-            --------
-            prev fp
-            --------
-            locals (as required)
-            ...
-            --------
-        */
     // typical call site:
         // mov R0, R20
         // psh R21 <- save R21 by pushing it on the stack
@@ -61,59 +45,9 @@ pub fn gen_code<W: Write>(mut ir: IrStore, mut writer: BufWriter<W>, opt: OptCon
         // pop R0 <- pop into nowhere
         // ... pop params off stack
         // pop R21 <- load old value back into R21
-    // typical function:
-        // prologue:
-            // psh RFP
-            // mov RSP -> RFP
-            // addi RSP, N <- save space for locals
-        // ... refer to locals on stack as required
-        // ... refer to params on stack as required
-        // IMPORTANT: you have to jump to the epilogue to return, rather than just returning
-        // epilogue:
-            // subi RSP, N <- shrink stack back down
-            // pop RFP
-            // ret
-// calling convention impl plan:
-    // impl ir pass that scans function body and determines its prologue and epilogue
-        // pass must determine how much stack space must be allocated, assign param values to their registers/stack vars, etc
-    // when you visit a function, run pass to determine pro/epilogue, then emit prologue, then emit epilogue after visit body
-    // split mu instructions into 2 variants:
-        // "bind" binds the value "out of" the register, i.e. it establishes that from this point forward they're linked
-            // importantly this means you don't have to move anything into the register
-            // use cases: link to params within functions, link to return val post-call
-            // because in both cases, you want to "bind" the value to the register in an "out" fashion
-        // "move" moves the value into the register
-            // establishes that you have to funnel the value into the register (or keep it there in the first place)
-            // use case: pass params to function
-            // because you have to ensure that the value is moved into the register
-        // difference is that binding establishes an "out-flow", where data flows out of that register that represents the value
-            // but, moving establishes an "in-flow", where data must flow into the register at that instruction from the value
-        // formally, in ir these look like:
-            // `mov $0, ArgLoc0` -> move value $0 into the location of the 1st arg
-            // `bind $3, RetValLoc` -> bind the value $3 to the location of the return value
-    // given the 2 separate mu-type instructions, here's how to handle function calls:
-        // whenever you visit a mov instruction, gather a running list of params for the current call
-        // then, when you hit the call instruction, first emit a call prologue for the mov instructions
-        // first, for each mov into a register:
-            // if the register is in use (see above), push its value onto the stack
-            // ...to be continued
-// basically to do all this calling convention stuff:
-    // when you start visiting an ir body:
-        // run ir pass to check calling conventions
-        // emit prologue
-        // visit body as usual
-        // emit epilogue
-    // when you hit a move instruction:
-        // keep a running list of params and put them in the right places before function call
-        // if you need to save registers, do so on the stack
-        // post-call if you had to save registers, pop them back off the stack
-// to do this we'll need, among other things:
-    // ir pass to check calling conventions
-        // and logic to emit prologue/epilogue according to them
-    // codegen logic for move/call instructions
-    // extend the codegen system to multiple bodies
-        // including a way to store the address of each function
+// To handle function calls:
 
+type DlxLocation = Location<Register>;
 
 struct DlxCodegen<'b> {
     body: &'b Body,
@@ -122,6 +56,7 @@ struct DlxCodegen<'b> {
     labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
     reg_live_set: HashSet<Register>,
     known_consts: HashMap<Value, u32>,
+    current_stack_args: Vec<Value>,
     next_instr_addr: i16, // addr in words of next instr
     unresolved_branches: Vec<UnresolvedBranch>,
     cutoff_point: Option<BasicBlock>,
@@ -136,13 +71,14 @@ impl<'b> DlxCodegen<'b> {
     pub fn new(body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
         DlxCodegen {
             body,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(64),
             loc_table: LocationTable::alloc_from(body),
             labels: HashMap::default(),
             reg_live_set: HashSet::default(),
             known_consts: HashMap::default(),
+            current_stack_args: Vec::with_capacity(8),
             next_instr_addr: 0,
-            unresolved_branches: Vec::new(),
+            unresolved_branches: Vec::with_capacity(16),
             cutoff_point: None,
             opt,
         }
@@ -173,8 +109,12 @@ impl<'b> DlxCodegen<'b> {
         self.emit_instr(Instruction::F1(F1Opcode::Psh, dest, Register::RSP, Self::FP_OFFSET));
     }
 
-    fn emit_reg2reg_move(&mut self, src: Register, dest: Register) {
+    fn emit_reg_to_reg_move(&mut self, src: Register, dest: Register) {
         self.emit_instr(Instruction::F1(F1Opcode::Addi, dest, src, 0));
+    }
+
+    fn emit_loc_to_loc_move(&mut self, src: DlxLocation, dest: DlxLocation) {
+        todo!();
     }
 
     fn emit_return(&mut self) {
@@ -186,7 +126,7 @@ impl<'b> DlxCodegen<'b> {
         if self.loc_table.stack_in_use() {
             // Push old fp onto the stack and update it
             self.emit_push(Register::RFP);
-            self.emit_reg2reg_move(Register::RSP, Register::RFP);
+            self.emit_reg_to_reg_move(Register::RSP, Register::RFP);
 
             let total_local_offset = self.loc_table.total_local_offset() as i16;
 
@@ -223,6 +163,16 @@ impl<'b> DlxCodegen<'b> {
         }
     }
 
+    fn emit_stack_args(&mut self) {
+        let args: Vec<_> = self.current_stack_args.drain(..).rev().collect();
+        
+        for arg in args.into_iter() {
+            // force arg into register and push onto stack
+            let src_reg = self.reg_for_val(arg, Self::STACK_TMP1);
+            self.emit_push(src_reg);
+        }
+    }
+
     fn mark_label(&mut self, bb: BasicBlock) {
         self.labels.insert(bb, self.next_instr_addr);
     }
@@ -235,8 +185,12 @@ impl<'b> DlxCodegen<'b> {
         self.label_for(dest).map(|l| l - src_addr)
     }
 
-    fn loc_for_val(&self, val: Value) -> Location<Register> {
+    fn loc_for_val(&self, val: Value) -> DlxLocation {
         self.loc_table.get(val).expect("invariant violated: missing location for value")
+    }
+
+    fn cc_location(&self, loc: CCLocation) -> DlxLocation {
+        todo!(); // store info for this in the loc table
     }
 
     fn reg_for_val(&mut self, val: Value, dest_reg: Register) -> Register {
@@ -315,6 +269,10 @@ impl<'b> DlxCodegen<'b> {
     fn stack_offset(&self, offset: i16) -> i16 {
         offset * -4
     }
+
+    fn push_stack_arg(&mut self, arg: Value) {
+        self.current_stack_args.push(arg);
+    }
 }
 
 impl IrVisitor for DlxCodegen<'_> {
@@ -372,8 +330,21 @@ impl IrVisitor for DlxCodegen<'_> {
         }
     }
 
-    fn visit_bind_instr(&mut self, _val: Value, _loc: CCLocation) {
-        todo!();
+    fn visit_bind_instr(&mut self, dest: Value, cc_loc: CCLocation) {
+        // when you hit a ret val bind instruction:
+            // if the location of the dest value isn't already the ret val register:
+                // if the location is a register, emit reg_to_reg move from ret val register
+                // if the location is on the stack, emit a store onto the stack
+        // when you hit an arg bind instruction:
+            // if dest location isn't the right register, move out of the register into the dest location
+                // see ret val bind above
+        let src_loc = self.cc_location(cc_loc);
+        let dest_loc = self.loc_for_val(dest);
+
+        if src_loc != dest_loc {
+            // move out of loc into dest loc
+            self.emit_loc_to_loc_move(src_loc, dest_loc);
+        }
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
@@ -393,7 +364,14 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_call_instr(&mut self, _func: &str) {
-        todo!();
+        // when you hit a call instruction:
+            // first emit all the stack param pushes in reverse order
+            // then clear the stack param list
+            // then emit the call instruction
+        self.emit_stack_args();
+        self.emit_instr(Instruction::F3(F3Opcode::Jsr, todo!()));
+        // pop stack args
+        // pop saved registers
     }
 
     fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
@@ -407,8 +385,27 @@ impl IrVisitor for DlxCodegen<'_> {
         self.emit_instr(Instruction::F2(F2Opcode::Ret, Register::R0, Register::R0, Register::R0));
     }
 
-    fn visit_move_instr(&mut self, _val: Value, _loc: CCLocation) {
-        todo!();
+    fn visit_move_instr(&mut self, src: Value, loc: CCLocation) {
+        // whenever you hit a mov instruction to an arg location:
+            // if register exists for arg location:
+                // issue a load or move from src value into arg register
+                // meaning either reg_to_reg move or load from stack directly
+                    // alternatively, if the locations match don't even emit anything
+            // else:
+                // push value onto stack
+                // actually, keep a running list of params that need to be pushed onto the stack
+        // when you hit a ret val move instruction:
+            // do the same as ret val bind, except from src value location into ret val register
+        let src_loc = self.loc_for_val(src);
+
+        match loc {
+            CCLocation::Arg(_) => match Register::for_cc_location(loc) {
+                Some(r) => self.emit_loc_to_loc_move(src_loc, Location::Reg(r)),
+                None => self.push_stack_arg(src),
+            }
+
+            CCLocation::RetVal => self.emit_loc_to_loc_move(src_loc, self.cc_location(loc)),
+        }
     }
 
     fn visit_read_instr(&mut self, dest: Value) {
