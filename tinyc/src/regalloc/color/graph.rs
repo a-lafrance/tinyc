@@ -11,6 +11,10 @@ pub struct InterferenceGraph {
 }
 
 impl InterferenceGraph {
+    pub fn color(&self) -> HashMap<Value, usize> {
+        todo!();
+    }
+
     fn has_edge(&self, v1: Value, v2: Value) -> bool {
         self.edges.get(&v1).map(|e| e.contains(&v2)).unwrap_or(false)
     }

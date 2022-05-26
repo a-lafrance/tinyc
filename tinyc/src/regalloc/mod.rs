@@ -1,11 +1,13 @@
-// mod graph;
+pub mod color;
+pub mod simple;
 
 use std::collections::HashMap;
 use dlx::isa::Register;
-use crate::ir::{
-    isa::{Body, CCLocation, Instruction, Value},
-    visit::{self, IrVisitor},
-};
+use crate::ir::isa::{Body, CCLocation, Value};
+
+pub trait Allocator<R: RegisterSet> {
+    fn build_table(table: &mut LocationTable<R>, body: &Body);
+}
 
 // "Location table" that links IR values to their storage location (register or stack)
 #[derive(Debug)]
@@ -17,10 +19,9 @@ pub struct LocationTable<R: RegisterSet> {
 }
 
 impl<R: RegisterSet> LocationTable<R> {
-    pub fn alloc_from(body: &Body) -> Self {
+    pub fn alloc_from<Alloc: Allocator<R>>(body: &Body) -> Self {
         let mut table = LocationTable::default();
-        let mut builder = LocationTableBuilder::new(&mut table);
-        builder.visit_body(body);
+        Alloc::build_table(&mut table, body);
 
         table
     }
@@ -118,65 +119,6 @@ impl RegisterSet for Register {
             CCLocation::RetVal => Some(RET_VAL_REG),
             CCLocation::Arg(n) if n < N_REG_ARGS => Some(Register(FIRST_ARG_REG + n as u8)),
             _ => None,
-        }
-    }
-}
-
-
-struct LocationTableBuilder<'t, R: RegisterSet> {
-    table: &'t mut LocationTable<R>,
-    next_reg_index: u8,
-    next_stack_local_offset: isize,
-    next_stack_arg_offset: isize,
-}
-
-impl<'t, R: RegisterSet> LocationTableBuilder<'t, R> {
-    pub fn new(table: &'t mut LocationTable<R>) -> Self {
-        LocationTableBuilder {
-            table,
-            next_reg_index: 0,
-            next_stack_local_offset: 1,
-            next_stack_arg_offset: -1,
-        }
-    }
-}
-
-impl<R: RegisterSet> IrVisitor for LocationTableBuilder<'_, R> {
-    fn visit_body(&mut self, body: &Body) {
-        visit::walk_body(self, body);
-    }
-
-    fn visit_instr(&mut self, instr: &Instruction) {
-        match instr {
-            Instruction::Bind(val, cc_loc) | Instruction::Move(val, cc_loc) => {
-                let loc = match R::for_cc_location(*cc_loc) {
-                    Some(reg) => Location::Reg(reg),
-                    None => {
-                        let loc = Location::Stack(self.next_stack_arg_offset);
-                        self.next_stack_arg_offset -= 1;
-                        loc
-                    }
-                };
-
-                self.table.insert_from_cc(*val, loc, *cc_loc);
-            },
-
-            instr => if let Some(val) = instr.result_val() {
-                let loc = match R::from_index(self.next_reg_index) {
-                    Some(reg) => {
-                        self.next_reg_index = self.next_reg_index.saturating_add(1);
-                        Location::Reg(reg)
-                    },
-
-                    None => {
-                        let loc = Location::Stack(self.next_stack_local_offset);
-                        self.next_stack_local_offset += 1;
-                        loc
-                    },
-                };
-
-                self.table.insert(val, loc);
-            }
         }
     }
 }

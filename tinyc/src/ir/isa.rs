@@ -356,15 +356,6 @@ impl BasicBlockData {
         self.edge
     }
 
-    pub fn branch_dest(&self) -> Option<BasicBlock> {
-        match self.edge() {
-            ControlFlowEdge::Branch(dest) => Some(dest),
-            ControlFlowEdge::IfStmt(_, else_bb, join_bb) => else_bb.or(Some(join_bb)),
-            ControlFlowEdge::Loop(_, follow_bb) => Some(follow_bb),
-            _ => None,
-        }
-    }
-
     pub fn set_edge(&mut self, edge: ControlFlowEdge) {
         self.edge = edge;
     }

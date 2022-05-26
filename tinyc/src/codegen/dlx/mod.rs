@@ -12,7 +12,7 @@ use crate::{
         visit::{self, IrVisitor},
         IrStore,
     },
-    regalloc::{Location, LocationTable, RegisterSet},
+    regalloc::{simple::SimpleAllocator, Location, LocationTable, RegisterSet},
     utils::Keyword,
 };
 use self::utils::{UnresolvedBranch, UnresolvedCall};
@@ -533,7 +533,7 @@ impl<'b> From<&'b Body> for BodyContext<'b> {
     fn from(body: &'b Body) -> BodyContext {
         BodyContext {
             body,
-            loc_table: LocationTable::alloc_from(body),
+            loc_table: LocationTable::alloc_from::<SimpleAllocator>(body),
             labels: HashMap::default(),
             reg_live_set: HashSet::default(),
             known_consts: HashMap::default(),
