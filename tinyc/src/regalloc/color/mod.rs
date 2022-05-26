@@ -10,7 +10,7 @@ pub struct ColoringAllocator;
 impl<R: RegisterSet> Allocator<R> for ColoringAllocator {
     fn build_table(table: &mut LocationTable<R>, body: &Body) {
         // build & color interference graph
-        let ig = InterferenceGraph::from(body);
+        let mut ig = InterferenceGraph::from(body);
         let colors = ig.color();
 
         // assign colors to actual locations in table

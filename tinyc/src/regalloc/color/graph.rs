@@ -1,5 +1,41 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::ir::isa::{BasicBlock, BasicBlockData, Body, ControlFlowEdge, Value};
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct NodeEntry {
+    edges: HashSet<Value>,
+    cost: usize,
+}
+
+impl NodeEntry {
+    pub fn has_edge(&self, dest: Value) -> bool {
+        self.edges.contains(&dest)
+    }
+
+    pub fn add_edge(&mut self, dest: Value) {
+        self.edges.insert(dest);
+    }
+
+    pub fn remove_edge(&mut self, dest: Value) {
+        self.edges.remove(&dest);
+    }
+
+    pub fn edges(&self) -> impl Iterator<Item = Value> + '_ {
+        self.edges.iter().copied()
+    }
+
+    pub fn into_edges(self) -> impl IntoIterator<Item = Value> {
+        self.edges.into_iter()
+    }
+
+    pub fn cost(&self) -> usize {
+        self.cost
+    }
+
+    pub fn increase_cost(&mut self) {
+        self.cost += 1;
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InterferenceGraph {
@@ -7,34 +43,120 @@ pub struct InterferenceGraph {
     // just remove the other nodes and edges from the graph and instead add them to the cluster.
     // then store a directory of clusters to know which nodes are and aren't supernodes for a cluster.
     clusters: HashMap<Value, Vec<Value>>,
-    edges: HashMap<Value, HashSet<Value>>,
+    nodes: HashMap<Value, NodeEntry>,
 }
 
 impl InterferenceGraph {
-    pub fn color(&self) -> HashMap<Value, usize> {
-        todo!();
+    pub fn color(&mut self) -> HashMap<Value, usize> {
+        let mut mapping = HashMap::new();
+        self.color_impl(&mut mapping, &mut BTreeSet::new());
+
+        // resolve clusters by giving each node the same color as the root
+        for (root, nodes) in self.clusters.iter() {
+            let cluster_color = mapping.get(root).copied().unwrap(); // FIXME: audit this
+
+            for node in nodes.iter().copied() {
+                mapping.insert(node, cluster_color);
+            }
+        }
+
+        mapping
+    }
+
+    fn color_impl(&mut self, mapping: &mut HashMap<Value, usize>, colors: &mut BTreeSet<usize>) {
+        if !self.is_empty() {
+            // remove lowest cost node and its edges
+                // SAVE THEM SOMEWHERE
+                // DON'T FORGET TO REMOVE EDGES FROM THE OTHER NODES' EDGE POOLS TOO
+            let (node, entry) = self.remove_lowest_cost_node().unwrap(); // FIXME: unsafe
+
+            // recursively color (call self.color recursively)
+            self.color_impl(mapping, colors);
+
+            // add node and edges back to graph
+            // choose color for node that's different from its neighbors
+                // always prefer colors that have already been assigned
+                // if no color exists, "allocate" a new one
+            self.reinstate_node(node, entry);
+
+            // to pick a color for the node:
+                // take the diff between all currently assigned colors and the colors present among neighbors
+                // if a value exists, choose that one
+                // otherwise, add a new assigned color and use that one
+            // once you've chosen a color, stick it in the mapping
+            let color = self.pick_color(node, mapping, colors);
+            mapping.insert(node, color);
+
+            // important wrinkle: take mu instructions into account such that you prefer to stick those values
+            // in the right register out of the gate
+                // this is a wrinkle to add later lol
+        }
+    }
+
+    fn pick_color(&self, node: Value, mapping: &HashMap<Value, usize>, colors: &mut BTreeSet<usize>) -> usize {
+        // May be able to speed this up by detecting color stuff based on max color and number of neighbors? idk
+        let entry = self.nodes.get(&node).unwrap();
+        let neighbor_colors: BTreeSet<_> = entry.edges()
+            .map(|n| mapping.get(&n).copied().unwrap()) // FIXME: unsafe
+            .collect();
+
+        colors.difference(&neighbor_colors).copied()
+            .min()
+            .unwrap_or_else(|| {
+                let next_color = colors.iter().copied().max().map(|c| c + 1).unwrap_or(0); // FIXME: a bit unsafe
+                colors.insert(next_color);
+
+                next_color
+            })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
     }
 
     fn has_edge(&self, v1: Value, v2: Value) -> bool {
-        self.edges.get(&v1).map(|e| e.contains(&v2)).unwrap_or(false)
+        self.nodes.get(&v1).map(|e| e.has_edge(v2)).unwrap_or(false)
     }
 
     fn add_edge(&mut self, v1: Value, v2: Value) {
-        let v1_edges = self.edges.entry(v1).or_insert_with(HashSet::new);
-        v1_edges.insert(v2);
+        let v1_entry = self.nodes.entry(v1).or_default();
+        v1_entry.add_edge(v2);
 
-        let v2_edges = self.edges.entry(v2).or_insert_with(HashSet::new);
-        v2_edges.insert(v1);
+        let v2_entry = self.nodes.entry(v2).or_default();
+        v2_entry.add_edge(v1);
+    }
+
+    fn reinstate_node(&mut self, node: Value, entry: NodeEntry) {
+        // Reinstate the entry if it was missing in the first place
+        let edges: Vec<_> = self.nodes.entry(node).or_insert(entry).edges().collect();
+
+        for dest in edges.into_iter() {
+            self.add_edge(node, dest);
+        }
     }
 
     fn remove_edge(&mut self, v1: Value, v2: Value) {
-        if let Some(edges) = self.edges.get_mut(&v1) {
-            edges.remove(&v2);
+        if let Some(entry) = self.nodes.get_mut(&v1) {
+            entry.remove_edge(v2);
         }
 
-        if let Some(edges) = self.edges.get_mut(&v2) {
-            edges.remove(&v1);
+        if let Some(entry) = self.nodes.get_mut(&v2) {
+            entry.remove_edge(v1);
         }
+    }
+
+    fn remove_lowest_cost_node(&mut self) -> Option<(Value, NodeEntry)> {
+        let node = self.nodes.iter()
+            .map(|(n, e)| (e.cost(), *n))
+            .min()
+            .map(|(_, n)| n)?;
+        let entry = self.nodes.remove(&node)?;
+
+        for dest in entry.edges() {
+            self.remove_edge(node, dest);
+        }
+
+        Some((node, entry))
     }
 
     fn coalesce_live_ranges(&mut self, body: &Body) {
@@ -47,8 +169,8 @@ impl InterferenceGraph {
                     if !self.has_edge(lhs, result) {
                         cluster.push(lhs);
 
-                        if let Some(edges) = self.edges.remove(&lhs) {
-                            for node in edges.into_iter() {
+                        if let Some(entry) = self.nodes.remove(&lhs) {
+                            for node in entry.into_edges() {
                                 self.remove_edge(lhs, node);
                                 self.add_edge(result, node);
                             }
@@ -58,8 +180,8 @@ impl InterferenceGraph {
                     if !self.has_edge(rhs, result) {
                         cluster.push(rhs);
 
-                        if let Some(edges) = self.edges.remove(&rhs) {
-                            for node in edges.into_iter() {
+                        if let Some(entry) = self.nodes.remove(&rhs) {
+                            for node in entry.into_edges() {
                                 self.remove_edge(rhs, node);
                                 self.add_edge(result, node);
                             }
@@ -80,7 +202,7 @@ impl InterferenceGraph {
             // remove dest value from live set if exists
             if let Some(result_val) = instr.result_val() {
                 live_set.remove(&result_val);
-                self.edges.entry(result_val).or_insert_with(HashSet::new);
+                self.nodes.entry(result_val).or_default();
 
                 // add interferences to graph
                 for val in live_set.iter().copied() {
@@ -91,6 +213,9 @@ impl InterferenceGraph {
 
             // insert operands to live set
             for val in instr.operands() {
+                let entry = self.nodes.entry(val).or_default();
+                entry.increase_cost();
+
                 live_set.insert(val);
             }
         }
@@ -114,6 +239,8 @@ impl InterferenceGraph {
         }
     }
 
+    // it's pretty benign if there's lots of arguments here because it's pretty obvious what they mean
+    #[allow(clippy::too_many_arguments)]
     fn visit_if_stmt(
         &mut self,
         body: &Body,
@@ -218,7 +345,7 @@ mod tests {
     use maplit::{hashmap, hashset};
     use crate::ir::isa::{BranchOpcode, Instruction, StoredBinaryOpcode};
     use super::*;
-
+    /*
     #[test]
     fn construct_ig_from_single_bb() {
         /*
@@ -479,5 +606,83 @@ mod tests {
                 Value(5) => hashset! { Value(1), Value(2), Value(4) },
             }
         });
+    }*/
+
+    #[test]
+    fn ig_coloring_sanity_check() {
+        let body = Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Const(0, Value(1)),
+                        Instruction::Const(1, Value(3)),
+                        Instruction::Const(2, Value(5)),
+                    ],
+                    ControlFlowEdge::Fallthrough(BasicBlock(1)),
+                    None,
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Read(Value(0)),
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Cmp,
+                            Value(0),
+                            Value(1),
+                            Value(2),
+                        ),
+                        Instruction::Branch(BranchOpcode::Bne, Value(2), BasicBlock(3)),
+                    ],
+                    ControlFlowEdge::IfStmt(BasicBlock(2), Some(BasicBlock(3)), BasicBlock(4)),
+                    None,
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Add,
+                            Value(0),
+                            Value(3),
+                            Value(4),
+                        ),
+                        Instruction::UnconditionalBranch(BasicBlock(4)),
+                    ],
+                    ControlFlowEdge::Branch(BasicBlock(4)),
+                    None,
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Mul,
+                            Value(0),
+                            Value(5),
+                            Value(6),
+                        ),
+                    ],
+                    ControlFlowEdge::Fallthrough(BasicBlock(4)),
+                    None,
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Phi,
+                            Value(4),
+                            Value(6),
+                            Value(7),
+                        ),
+                        Instruction::Write(Value(7)),
+                        Instruction::Writeln,
+                        Instruction::End,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    None,
+                ),
+            ],
+            Some(BasicBlock(0))
+        );
+
+        let mut ig = InterferenceGraph::from(&body);
+        let colors = ig.color();
+
+        // just quickly make sure the thing was colored optimally
+        assert_eq!(colors.values().copied().max(), Some(3));
     }
 }
