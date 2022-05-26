@@ -168,24 +168,12 @@ impl InterferenceGraph {
                 if !self.has_edge(lhs, rhs) {
                     if !self.has_edge(lhs, result) {
                         cluster.push(lhs);
-
-                        if let Some(entry) = self.nodes.remove(&lhs) {
-                            for node in entry.into_edges() {
-                                self.remove_edge(lhs, node);
-                                self.add_edge(result, node);
-                            }
-                        }
+                        self.merge_nodes(lhs, result);
                     }
 
                     if !self.has_edge(rhs, result) {
                         cluster.push(rhs);
-
-                        if let Some(entry) = self.nodes.remove(&rhs) {
-                            for node in entry.into_edges() {
-                                self.remove_edge(rhs, node);
-                                self.add_edge(result, node);
-                            }
-                        }
+                        self.merge_nodes(rhs, result);
                     }
                 }
 
@@ -196,7 +184,19 @@ impl InterferenceGraph {
         }
     }
 
-    fn construct_from_basic_block(&mut self, bb: &BasicBlockData, live_set: &mut HashSet<Value>) {
+    fn merge_nodes(&mut self, src: Value, dest: Value) {
+        if let Some(entry) = self.nodes.remove(&src) {
+            let dest_entry = self.nodes.get_mut(&dest).unwrap();
+            dest_entry.cost += entry.cost;
+
+            for node in entry.into_edges() {
+                self.remove_edge(src, node);
+                self.add_edge(dest, node);
+            }
+        }
+    }
+
+    fn construct_from_basic_block(&mut self, bb: &BasicBlockData, live_set: &mut HashSet<Value>, track_costs: bool) {
         // for each instr from last to first
         for instr in bb.body().iter().rev() {
             // remove dest value from live set if exists
@@ -213,8 +213,10 @@ impl InterferenceGraph {
 
             // insert operands to live set
             for val in instr.operands() {
-                let entry = self.nodes.entry(val).or_default();
-                entry.increase_cost();
+                if track_costs {
+                    let entry = self.nodes.entry(val).or_default();
+                    entry.increase_cost();
+                }
 
                 live_set.insert(val);
             }
@@ -229,10 +231,10 @@ impl InterferenceGraph {
         let bb_data = body.basic_block_data(bb);
 
         match bb_data.edge() {
-            ControlFlowEdge::Leaf => self.construct_from_basic_block(bb_data, live_set),
+            ControlFlowEdge::Leaf => self.construct_from_basic_block(bb_data, live_set, true),
             ControlFlowEdge::Fallthrough(dest) | ControlFlowEdge::Branch(dest) => {
                 self.visit_basic_block(body, dest, live_set, target);
-                self.construct_from_basic_block(bb_data, live_set);
+                self.construct_from_basic_block(bb_data, live_set, true);
             },
             ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb) => self.visit_if_stmt(body, bb_data, then_bb, else_bb, join_bb, live_set, target),
             ControlFlowEdge::Loop(body_bb, follow_bb) => self.visit_loop(body, bb, body_bb, follow_bb, live_set, target),
@@ -270,7 +272,7 @@ impl InterferenceGraph {
             live_set.insert(val);
         }
 
-        self.construct_from_basic_block(condition_bb_data, live_set);
+        self.construct_from_basic_block(condition_bb_data, live_set, true);
     }
 
     fn visit_loop(
@@ -288,7 +290,7 @@ impl InterferenceGraph {
 
         // use live set, construct from header bb
         let original_live_set = live_set.clone();
-        self.construct_from_basic_block(header_bb_data, live_set);
+        self.construct_from_basic_block(header_bb_data, live_set, true);
 
         // config live set for body
             // remove left side of phis
@@ -315,7 +317,7 @@ impl InterferenceGraph {
         }
 
         // construct from header bb again
-        self.construct_from_basic_block(header_bb_data, live_set);
+        self.construct_from_basic_block(header_bb_data, live_set, false);
 
         // config live set for prev bb
             // remove right side of phis
@@ -345,7 +347,7 @@ mod tests {
     use maplit::{hashmap, hashset};
     use crate::ir::isa::{BranchOpcode, Instruction, StoredBinaryOpcode};
     use super::*;
-    /*
+
     #[test]
     fn construct_ig_from_single_bb() {
         /*
@@ -381,10 +383,19 @@ mod tests {
         let ig = InterferenceGraph::from(&body);
         assert_eq!(ig, InterferenceGraph {
             clusters: hashmap!{},
-            edges: hashmap!{
-                Value(0) => hashset!{ Value(1) },
-                Value(1) => hashset!{ Value(0) },
-                Value(2) => HashSet::new(),
+            nodes: hashmap!{
+                Value(0) => NodeEntry {
+                    edges: hashset!{ Value(1) },
+                    cost: 2,
+                },
+                Value(1) => NodeEntry {
+                    edges: hashset!{ Value(0) },
+                    cost: 1,
+                },
+                Value(2) => NodeEntry {
+                    edges: HashSet::new(),
+                    cost: 1,
+                },
             },
         });
     }
@@ -425,10 +436,19 @@ mod tests {
         let ig = InterferenceGraph::from(&body);
         assert_eq!(ig, InterferenceGraph {
             clusters: hashmap!{},
-            edges: hashmap!{
-                Value(0) => hashset!{ Value(1) },
-                Value(1) => hashset!{ Value(0) },
-                Value(2) => HashSet::new(),
+            nodes: hashmap!{
+                Value(0) => NodeEntry {
+                    edges: hashset!{ Value(1) },
+                    cost: 1,
+                },
+                Value(1) => NodeEntry {
+                    edges: hashset!{ Value(0) },
+                    cost: 1,
+                },
+                Value(2) => NodeEntry {
+                    edges: HashSet::new(),
+                    cost: 1,
+                },
             },
         });
     }
@@ -440,8 +460,8 @@ mod tests {
             BB0:
             $0 = read
             $1 = read
-            cmp $0, $1
-            ble BB2
+            $2 = cmp $0, $1
+            ble $2, BB2
 
             BB1:
             write $0
@@ -451,8 +471,8 @@ mod tests {
             write $1
 
             BB3:
-            $2 = add $0, $1
-            write $2
+            $3 = add $0, $1
+            write $3
             writeln
             end
         */
@@ -506,11 +526,23 @@ mod tests {
         let ig = InterferenceGraph::from(&body);
         assert_eq!(ig, InterferenceGraph {
             clusters: hashmap!{},
-            edges: hashmap! {
-                Value(0) => hashset! { Value(1), Value(2) },
-                Value(1) => hashset! { Value(0), Value(2) },
-                Value(2) => hashset! { Value(0), Value(1) },
-                Value(3) => HashSet::new(),
+            nodes: hashmap! {
+                Value(0) => NodeEntry {
+                    edges: hashset! { Value(1), Value(2) },
+                    cost: 3
+                },
+                Value(1) => NodeEntry {
+                    edges: hashset! { Value(0), Value(2) },
+                    cost: 3,
+                },
+                Value(2) => NodeEntry {
+                    edges: hashset! { Value(0), Value(1) },
+                    cost: 1,
+                },
+                Value(3) => NodeEntry {
+                    edges: HashSet::new(),
+                    cost: 1,
+                },
             },
         });
     }
@@ -599,14 +631,26 @@ mod tests {
             clusters: hashmap! {
                 Value(4) => vec![Value(4), Value(0), Value(3)]
             },
-            edges: hashmap! {
-                Value(1) => hashset! { Value(2), Value(4), Value(5) },
-                Value(2) => hashset! { Value(1), Value(4), Value(5) },
-                Value(4) => hashset! { Value(1), Value(2), Value(5) },
-                Value(5) => hashset! { Value(1), Value(2), Value(4) },
+            nodes: hashmap! {
+                Value(1) => NodeEntry {
+                    edges: hashset! { Value(2), Value(4), Value(5) },
+                    cost: 1,
+                },
+                Value(2) => NodeEntry {
+                    edges: hashset! { Value(1), Value(4), Value(5) },
+                    cost: 1,
+                },
+                Value(4) => NodeEntry {
+                    edges: hashset! { Value(1), Value(2), Value(5) },
+                    cost: 5,
+                },
+                Value(5) => NodeEntry {
+                    edges: hashset! { Value(1), Value(2), Value(4) },
+                    cost: 1,
+                },
             }
         });
-    }*/
+    }
 
     #[test]
     fn ig_coloring_sanity_check() {
