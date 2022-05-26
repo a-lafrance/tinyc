@@ -46,7 +46,6 @@ pub enum IndexableInstr {
     Mul(Value, Value),
     Div(Value, Value),
     Cmp(Value, Value),
-    Call(String),
 }
 
 impl IndexableInstr {

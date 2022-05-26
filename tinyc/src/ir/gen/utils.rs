@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use bimap::BiMap;
 use crate::{
     ast::{
         visit::AstVisitor,
@@ -9,33 +10,31 @@ use crate::{
 
 #[derive(Default)]
 pub struct ConstAllocator {
-    by_const: HashMap<u32, Value>,
-    by_val: HashMap<Value, u32>,
+    mapping: BiMap<u32, Value>,
 }
 
 impl ConstAllocator {
     pub fn is_empty(&self) -> bool {
-        self.by_val.is_empty()
+        self.mapping.is_empty()
     }
 
     pub fn val_for_const(&self, n: u32) -> Option<Value> {
-        self.by_const.get(&n).copied()
+        self.mapping.get_by_left(&n).copied()
     }
 
     pub fn const_for_val(&self, val: Value) -> Option<u32> {
-        self.by_val.get(&val).copied()
+        self.mapping.get_by_right(&val).copied()
     }
 
     pub fn alloc(&mut self, n: u32, val: Value) {
-        self.by_const.insert(n, val);
-        self.by_val.insert(val, n);
+        self.mapping.insert(n, val);
     }
 
     pub fn make_prelude_block(&self, body: &mut Body) {
         if !self.is_empty() {
             let prelude_block = body.make_new_root();
 
-            for (n, val) in self.by_const.iter().map(|(n, v)| (*n, *v)) {
+            for (n, val) in self.mapping.iter().map(|(n, v)| (*n, *v)) {
                 body.push_instr(prelude_block, Instruction::Const(n, val));
             }
         }

@@ -8,8 +8,14 @@ bytes = "1.1.0"
 clap = { version = "3.1.18", optional = true, features = ["derive"] }
 
 [features]
-emu-cli = ["clap"]
+cli = ["clap"]
 
 [[bin]]
 name = "emu"
-required-features = ["emu-cli"]
+path = "src/bin/emu.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "viz"
+path = "src/bin/viz.rs"
+required-features = ["cli"]

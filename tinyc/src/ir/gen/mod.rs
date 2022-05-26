@@ -293,36 +293,25 @@ impl AstVisitor for IrBodyGenerator {
             },
             Some(Builtin::OutputNewLine) => Some(Instruction::Writeln),
             None => {
+                // _can't_ cse calls because they may have side effects
+                    // a more robust optimization could track which functions do and don't have side effects but eh
                 // push all args
                 let block = self.current_block.expect("invariant violated: must be in block");
-                let cse_index = IndexableInstr::Call(call.name.clone());
 
-                let dest_val = match self.cse_cache.as_ref()
-                    .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index)) {
-                        Some(val) => val,
-                        None => {
-                            for (i, arg) in call.args.iter().enumerate() {
-                                self.visit_expr(arg);
-                                self.body.push_instr(
-                                    block,
-                                    Instruction::Mu(
-                                        self.last_val.expect("invariant violated: arg must have val"),
-                                        CCLocation::Arg(i),
-                                    ),
-                                );
-                            }
+                for (i, arg) in call.args.iter().enumerate() {
+                    self.visit_expr(arg);
+                    self.body.push_instr(
+                        block,
+                        Instruction::Move(
+                            self.last_val.expect("invariant violated: arg must have val"),
+                            CCLocation::Arg(i),
+                        ),
+                    );
+                }
 
-                            let dest_val = self.alloc_val();
-                            self.body.push_instr(block, Instruction::Call(call.name.clone()));
-                            self.body.push_instr(block, Instruction::Mu(dest_val, CCLocation::RetVal));
-
-                            if let Some(ref mut cse_cache) = self.cse_cache {
-                                cse_cache.insert_instr(block, cse_index, dest_val);
-                            }
-
-                            dest_val
-                        }
-                    };
+                let dest_val = self.alloc_val();
+                self.body.push_instr(block, Instruction::Call(call.name.clone()));
+                self.body.push_instr(block, Instruction::Bind(dest_val, CCLocation::RetVal));
 
                 self.last_val = Some(dest_val);
                 None
@@ -344,7 +333,7 @@ impl AstVisitor for IrBodyGenerator {
         for (i, param) in decl.params.iter().cloned().enumerate() {
             let param_val = self.alloc_val();
             self.body.assign_in_bb(root, param, param_val);
-            self.body.push_instr(root, Instruction::Mu(param_val, CCLocation::Arg(i)));
+            self.body.push_instr(root, Instruction::Bind(param_val, CCLocation::Arg(i)));
         }
 
         visit::walk_func_decl(self, decl);
@@ -486,7 +475,7 @@ impl AstVisitor for IrBodyGenerator {
         let block = self.current_block.expect("invariant violated: return must be in block");
 
         if let Some(ret_val) = self.last_val {
-            self.body.push_instr(block, Instruction::Mu(ret_val, CCLocation::RetVal));
+            self.body.push_instr(block, Instruction::Move(ret_val, CCLocation::RetVal));
         }
 
         self.body.push_instr(block, Instruction::Return);

@@ -1,4 +1,5 @@
 pub mod isa;
+pub mod utils;
 
 use std::{
     cmp::Ordering,
@@ -7,11 +8,14 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader, Read, Write},
 };
-use self::isa::{F1Opcode, F2Opcode, Instruction, InstrDecodeError, Register};
+use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, InstrDecodeError, Register};
+
+const MEM_SIZE: usize = 256;
 
 pub struct Emulator<Stdin: Read, Stdout: Write> {
     registers: [u32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
+    data_mem: [u32; MEM_SIZE],
     pc: usize,
     stdin: BufReader<Stdin>,
     stdout: Stdout,
@@ -29,21 +33,25 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         let mut buf = [0u8; 4]; // allocate a 4-byte buffer for each instruction
 
         // read 4 byte chunks and decode instructions until eof
-        while reader.read(&mut buf)? > 0 {
-            // NOTE: took a short cut here and ignored short counts
-            let instr_bytes = u32::from_be_bytes(buf);
-            let instr = Instruction::try_from(instr_bytes)?;
+        while let Some(instr) = utils::read_instr(&mut reader, &mut buf)? {
             instr_mem.push(instr);
         }
 
-        Ok(Emulator {
+        let mut e = Emulator {
             registers: [0; Register::N_REGS],
             instr_mem,
+            data_mem: [0; MEM_SIZE],
             pc: 0,
             stdin: BufReader::new(stdin),
             stdout,
             quiet,
-        })
+        };
+
+        let stack_start = e.data_mem.len() as u32 - 1;
+        e.store_reg(Register::RSP, stack_start);
+        e.store_reg(Register::RFP, stack_start);
+
+        Ok(e)
     }
 
     // TODO: return some kind of result/exit status
@@ -51,11 +59,14 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         loop {
             match self.exec_current_instr() {
                 ControlFlow::Continue => (),
+                ControlFlow::Quit => break,
+
                 ControlFlow::Branch(offset) => {
                     let pc = &mut (self.pc as isize);
                     *pc += offset as isize;
                 }
-                ControlFlow::Quit => break,
+
+                ControlFlow::Jump(dest) => self.pc = dest,
             }
         }
     }
@@ -67,25 +78,29 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Subi, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 - imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Muli, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 * imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Divi, dest, src, imm) => {
                 let result = (self.load_reg(src) as i64 / imm as i64) as u32;
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
                 let src = self.load_reg(src) as i64;
                 let result = match src.cmp(&(imm as i64)) {
@@ -96,77 +111,117 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
+            Instruction::F1(F1Opcode::Ldw, dest, base, offset) => {
+                let addr = (self.load_reg(base) as i32) + (offset as i32);
+                self.load_mem_into_reg(addr as u32, dest);
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Pop, dest, sp, size) => {
+                // load from sp into dest
+                // inc sp by size
+                self.load_mem_into_reg(self.load_reg(sp), dest);
+                self.update_sp(sp, size);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Stw, src, base, offset) => {
+                let addr = (self.load_reg(base) as i32) + (offset as i32);
+                self.store_mem_from_reg(addr as u32, src);
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Psh, src, sp, size) => {
+                self.update_sp(sp, size);
+                self.store_mem_from_reg(self.load_reg(sp), src);
+
+                ControlFlow::Continue
+            }
+
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) == 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) != 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Ble, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) <= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bgt, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) > 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) < 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) >= 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
                 }
-            },
+            }
+
             Instruction::F1(F1Opcode::Wrl, _, _, _) => {
                 self.writeln();
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Add, dest, src1, src2) => {
                 let result = self.load_reg(src1) + self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Sub, dest, src1, src2) => {
                 let result = self.load_reg(src1) - self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Mul, dest, src1, src2) => {
                 let result = self.load_reg(src1) * self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Div, dest, src1, src2) => {
                 let result = self.load_reg(src1) / self.load_reg(src2);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
                 let result = match lhs.cmp(&rhs) {
                     Ordering::Less => 0,
@@ -176,18 +231,29 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
-            },
+            }
+
             Instruction::F2(F2Opcode::Ret, _, _, Register::R0) => ControlFlow::Quit,
-            Instruction::F2(F2Opcode::Ret, _, _, _dest) => todo!(),
+
+            Instruction::F2(F2Opcode::Ret, _, _, dest) => {
+                let dest_addr = self.load_reg(dest);
+                ControlFlow::Jump(dest_addr as usize)
+            }
+
             Instruction::F2(F2Opcode::Rdd, dest, _, _) => {
                 self.read_to(dest);
                 ControlFlow::Continue
             }
+
             Instruction::F2(F2Opcode::Wrd, _, src, _) => {
                 self.write_from(src);
                 ControlFlow::Continue
-            },
-            Instruction::F3(_, _) => unimplemented!("F3 instructions not yet implemented"),
+            }
+
+            Instruction::F3(F3Opcode::Jsr, dest) => {
+                self.store_reg(Register::RRET, self.pc as u32);
+                ControlFlow::Jump(dest as usize)
+            }
         }
     }
 
@@ -203,7 +269,32 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn store_reg(&mut self, r: Register, val: u32) {
-        self.registers[r.0 as usize] = val;
+        if r.0 > 0 {
+            self.registers[r.0 as usize] = val;
+        }
+    }
+
+    fn load_mem(&self, addr: u32) -> u32 {
+        self.data_mem[addr as usize]
+    }
+
+    fn store_mem(&mut self, addr: u32, val: u32) {
+        self.data_mem[addr as usize] = val;
+    }
+
+    fn load_mem_into_reg(&mut self, addr: u32, dest: Register) {
+        let data = self.load_mem(addr);
+        self.store_reg(dest, data);
+    }
+
+    fn store_mem_from_reg(&mut self, addr: u32, src: Register) {
+        self.store_mem(addr, self.load_reg(src));
+    }
+
+    fn update_sp(&mut self, sp: Register, offset: i16) {
+        let current_sp = self.load_reg(sp);
+        let new_sp = (current_sp as i32) + (offset as i32);
+        self.store_reg(sp, new_sp as u32);
     }
 
     fn read_to(&mut self, r: Register) {
@@ -211,7 +302,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             write!(self.stdout, "> ").unwrap();
             self.stdout.flush().unwrap();
         }
-        
+
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
@@ -232,6 +323,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 pub enum ControlFlow {
     Continue,
     Branch(i16),
+    Jump(usize),
     Quit,
 }
 
