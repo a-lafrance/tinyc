@@ -59,4 +59,6 @@ Roadmap for goals to accomplish this quarter:
   * Likely manifests itself in 2 ways: optimization levels and "strict mode" (which enables extra semantic checks)
 
 ### Extreme Stretch Goals
+- [ ] Even more optimizations
+  - [ ] Compile time evaluation of constant comparisons/branching
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
