@@ -7,5 +7,5 @@ pub fn read_instr(reader: &mut impl BufRead, buf: &mut [u8; 4]) -> Result<Option
     }
 
     let bytes = u32::from_be_bytes(*buf);
-    Instruction::try_from(bytes).map(|i| Some(i)).map_err(|e| e.into())
+    Instruction::try_from(bytes).map(Some).map_err(|e| e.into())
 }
