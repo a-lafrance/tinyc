@@ -99,14 +99,14 @@ impl InterferenceGraph {
 
         let bb_data = body.basic_block_data(bb);
 
-        match bb_data.control_flow_kind(body) {
+        match bb_data.edge() {
             ControlFlowEdge::Leaf => self.construct_from_basic_block(bb_data, live_set),
             ControlFlowEdge::Fallthrough(dest) | ControlFlowEdge::Branch(dest) => {
                 self.visit_basic_block(body, dest, live_set, target);
                 self.construct_from_basic_block(bb_data, live_set);
             },
-            ControlFlowEdge::IfStmt(then_bb, else_bb) => self.visit_if_stmt(body, bb_data, then_bb, else_bb, live_set, target),
-            ControlFlowEdge::Loop(header_bb, body_bb) => self.visit_loop(body, bb_data, header_bb, body_bb, live_set, target),
+            ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb) => self.visit_if_stmt(body, bb_data, then_bb, else_bb, join_bb, live_set, target),
+            ControlFlowEdge::Loop(body_bb, follow_bb) => self.visit_loop(body, bb, body_bb, follow_bb, live_set, target),
         }
     }
 
@@ -115,26 +115,25 @@ impl InterferenceGraph {
         body: &Body,
         condition_bb_data: &BasicBlockData,
         then_bb: BasicBlock,
-        else_bb: BasicBlock,
+        else_bb: Option<BasicBlock>,
+        join_bb: BasicBlock,
         live_set: &mut HashSet<Value>,
         target: Option<BasicBlock>,
     ) {
-        let then_bb_data = body.basic_block_data(then_bb);
-        let join_bb = then_bb_data.branch_dest().unwrap(); // this assumes if stmt configured correctly
         self.visit_basic_block(body, join_bb, live_set, target);
 
         let mut then_live_set = live_set.clone();
-        let else_live_set = live_set;
 
-        for (then_val, else_val, _) in body.basic_block_data(join_bb).phis() {
-            then_live_set.remove(&else_val);
-            else_live_set.remove(&then_val);
+        for (then_val, alt_val, _) in body.basic_block_data(join_bb).phis() {
+            then_live_set.remove(&alt_val);
+            live_set.remove(&then_val);
         }
 
         self.visit_basic_block(body, then_bb, &mut then_live_set, Some(join_bb));
-        self.visit_basic_block(body, else_bb, else_live_set, Some(join_bb));
 
-        let live_set = else_live_set;
+        if let Some(else_bb) = else_bb {
+            self.visit_basic_block(body, else_bb, live_set, Some(join_bb));
+        }
 
         for val in then_live_set.into_iter() {
             live_set.insert(val);
@@ -146,15 +145,14 @@ impl InterferenceGraph {
     fn visit_loop(
         &mut self,
         body: &Body,
-        prev_bb_data: &BasicBlockData,
         header_bb: BasicBlock,
         body_bb: BasicBlock,
+        follow_bb: BasicBlock,
         live_set: &mut HashSet<Value>,
         target: Option<BasicBlock>,
     ) {
         // visit follow bb
         let header_bb_data = body.basic_block_data(header_bb);
-        let follow_bb = header_bb_data.branch_dest().unwrap();
         self.visit_basic_block(body, follow_bb, live_set, target);
 
         // use live set, construct from header bb
@@ -193,9 +191,6 @@ impl InterferenceGraph {
         for (_, body_val, _) in header_bb_data.phis() {
             live_set.remove(&body_val);
         }
-
-        // construct from prev bb
-        self.construct_from_basic_block(prev_bb_data, live_set);
     }
 }
 
@@ -237,17 +232,16 @@ mod tests {
                     Instruction::Read(Value(0)),
                     Instruction::Read(Value(1)),
                     Instruction::Write(Value(0)),
-                    Instruction::StoredBinaryOp {
-                        opcode: StoredBinaryOpcode::Add,
-                        src1: Value(0),
-                        src2: Value(1),
-                        dest: Value(2),
-                    },
+                    Instruction::StoredBinaryOp(
+                        StoredBinaryOpcode::Add,
+                        Value(0),
+                        Value(1),
+                        Value(2),
+                    ),
                     Instruction::Write(Value(2)),
                     Instruction::End,
                 ],
-                None,
-                None,
+                ControlFlowEdge::Leaf,
                 None,
             )],
             Some(BasicBlock(0)),
@@ -277,21 +271,21 @@ mod tests {
             end
         */
 
+        // NOTE: uhh this is just a single block?
         let body = Body::from(
             vec![BasicBlockData::with(
                 vec![
                     Instruction::Const(0, Value(0)),
                     Instruction::Const(1, Value(1)),
-                    Instruction::StoredBinaryOp {
-                        opcode: StoredBinaryOpcode::Add,
-                        src1: Value(0),
-                        src2: Value(1),
-                        dest: Value(2),
-                    },
+                    Instruction::StoredBinaryOp(
+                        StoredBinaryOpcode::Add,
+                        Value(0),
+                        Value(1),
+                        Value(2),
+                    ),
                     Instruction::Write(Value(2)),
                 ],
-                None,
-                None,
+                ControlFlowEdge::Leaf,
                 None,
             )],
             Some(BasicBlock(0)),
@@ -338,44 +332,40 @@ mod tests {
                     vec![
                         Instruction::Read(Value(0)),
                         Instruction::Read(Value(1)),
-                        Instruction::Cmp(Value(0), Value(1)),
-                        Instruction::Branch(BranchOpcode::Ble, BasicBlock(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, Value(0), Value(1), Value(2)),
+                        Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(2)),
                     ],
-                    Some(BasicBlock(1)),
-                    Some(BasicBlock(2)),
+                    ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(2)), BasicBlock(3)),
                     None,
                 ),
                 BasicBlockData::with(
                     vec![
                         Instruction::Write(Value(0)),
-                        Instruction::Branch(BranchOpcode::Br, BasicBlock(3)),
+                        Instruction::UnconditionalBranch(BasicBlock(3)),
                     ],
-                    None,
-                    Some(BasicBlock(3)),
+                    ControlFlowEdge::Branch(BasicBlock(3)),
                     None,
                 ),
                 BasicBlockData::with(
                     vec![
                         Instruction::Write(Value(1)),
                     ],
-                    Some(BasicBlock(3)),
-                    None,
+                    ControlFlowEdge::Fallthrough(BasicBlock(3)),
                     None,
                 ),
                 BasicBlockData::with(
                     vec![
-                        Instruction::StoredBinaryOp {
-                            opcode: StoredBinaryOpcode::Add,
-                            src1: Value(0),
-                            src2: Value(1),
-                            dest: Value(2),
-                        },
-                        Instruction::Write(Value(2)),
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Add,
+                            Value(0),
+                            Value(1),
+                            Value(3),
+                        ),
+                        Instruction::Write(Value(3)),
                         Instruction::Writeln,
                         Instruction::End,
                     ],
-                    None,
-                    None,
+                    ControlFlowEdge::Leaf,
                     None,
                 ),
             ],
@@ -386,9 +376,10 @@ mod tests {
         assert_eq!(ig, InterferenceGraph {
             clusters: hashmap!{},
             edges: hashmap! {
-                Value(0) => hashset! { Value(1) },
-                Value(1) => hashset! { Value(0) },
-                Value(2) => HashSet::new(),
+                Value(0) => hashset! { Value(1), Value(2) },
+                Value(1) => hashset! { Value(0), Value(2) },
+                Value(2) => hashset! { Value(0), Value(1) },
+                Value(3) => HashSet::new(),
             },
         });
     }
@@ -403,8 +394,8 @@ mod tests {
 
             BB1:
                 $4 = phi $0, $3
-                cmp $4, $2
-                bge BB3
+                $5 = cmp $4, $2
+                bge $5, BB3
 
             BB2:
                 $3 = add $4, $1
@@ -424,37 +415,39 @@ mod tests {
                         Instruction::Const(1, Value(1)),
                         Instruction::Read(Value(2)),
                     ],
-                    Some(BasicBlock(1)),
-                    None,
-                    None,
-                ),
-                BasicBlockData::with(
-                    vec![
-                        Instruction::StoredBinaryOp {
-                            opcode: StoredBinaryOpcode::Phi,
-                            src1: Value(0),
-                            src2: Value(3),
-                            dest: Value(4),
-                        },
-                        Instruction::Cmp(Value(4), Value(2)),
-                        Instruction::Branch(BranchOpcode::Bge, BasicBlock(3)),
-                    ],
-                    Some(BasicBlock(2)),
-                    Some(BasicBlock(3)),
+                    ControlFlowEdge::Fallthrough(BasicBlock(1)),
                     None,
                 ),
                 BasicBlockData::with(
                     vec![
-                        Instruction::StoredBinaryOp {
-                            opcode: StoredBinaryOpcode::Add,
-                            src1: Value(4),
-                            src2: Value(1),
-                            dest: Value(3),
-                        },
-                        Instruction::Branch(BranchOpcode::Br, BasicBlock(1)),
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Phi,
+                            Value(0),
+                            Value(3),
+                            Value(4),
+                        ),
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Cmp,
+                            Value(4),
+                            Value(2),
+                            Value(5),
+                        ),
+                        Instruction::Branch(BranchOpcode::Bge, Value(5), BasicBlock(3)),
                     ],
+                    ControlFlowEdge::Loop(BasicBlock(2), BasicBlock(3)),
                     None,
-                    Some(BasicBlock(1)),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Add,
+                            Value(4),
+                            Value(1),
+                            Value(3),
+                        ),
+                        Instruction::UnconditionalBranch(BasicBlock(1)),
+                    ],
+                    ControlFlowEdge::Branch(BasicBlock(1)),
                     None,
                 ),
                 BasicBlockData::with(
@@ -463,8 +456,7 @@ mod tests {
                         Instruction::Writeln,
                         Instruction::End,
                     ],
-                    None,
-                    None,
+                    ControlFlowEdge::Leaf,
                     None,
                 ),
             ],
@@ -477,9 +469,10 @@ mod tests {
                 Value(4) => vec![Value(4), Value(0), Value(3)]
             },
             edges: hashmap! {
-                Value(1) => hashset! { Value(2), Value(4) },
-                Value(2) => hashset! { Value(1), Value(4) },
-                Value(4) => hashset! { Value(1), Value(2) },
+                Value(1) => hashset! { Value(2), Value(4), Value(5) },
+                Value(2) => hashset! { Value(1), Value(4), Value(5) },
+                Value(4) => hashset! { Value(1), Value(2), Value(5) },
+                Value(5) => hashset! { Value(1), Value(2), Value(4) },
             }
         });
     }
