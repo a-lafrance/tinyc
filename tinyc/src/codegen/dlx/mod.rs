@@ -247,8 +247,12 @@ impl<'b> DlxCodegen<'b> {
         self.label_for(dest).map(|l| l - src_addr)
     }
 
-    fn loc_for_val(&self, val: Value) -> DlxLocation {
-        self.current_context.loc_table.get(val).expect("invariant violated: missing location for value")
+    fn loc_for_val(&self, val: Value) -> Option<DlxLocation> {
+        self.current_context.loc_table.get(val)
+    }
+
+    fn expect_loc_for_val(&self, val: Value) -> DlxLocation {
+        self.loc_for_val(val).expect("invariant violated: missing location for value")
     }
 
     fn cc_location(&self, loc: CCLocation) -> DlxLocation {
@@ -256,7 +260,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn reg_for_val(&mut self, val: Value, dest_reg: Register) -> Register {
-        let reg = match self.loc_for_val(val) {
+        let reg = match self.expect_loc_for_val(val) {
             Location::Reg(r) => r,
             Location::Stack(offset) => {
                 self.emit_load(dest_reg, Register::RFP, self.stack_offset(offset));
@@ -419,9 +423,10 @@ impl IrVisitor for DlxCodegen<'_> {
         // when you hit an arg bind instruction:
             // if dest location isn't the right register, move out of the register into the dest location
                 // see ret val bind above
-        let src_loc = self.cc_location(cc_loc);
-        let dest_loc = self.loc_for_val(dest);
-        self.emit_loc_to_loc_move(src_loc, dest_loc);
+        if let Some(dest_loc) = self.loc_for_val(dest) {
+            let src_loc = self.cc_location(cc_loc);
+            self.emit_loc_to_loc_move(src_loc, dest_loc);
+        }
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
@@ -459,7 +464,7 @@ impl IrVisitor for DlxCodegen<'_> {
                 // actually, keep a running list of params that need to be pushed onto the stack
         // when you hit a ret val move instruction:
             // do the same as ret val bind, except from src value location into ret val register
-        let src_loc = self.loc_for_val(src);
+        let src_loc = self.expect_loc_for_val(src);
 
         match loc {
             CCLocation::Arg(_) => match Register::for_cc_location(loc) {
