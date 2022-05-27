@@ -27,9 +27,6 @@ pub fn gen_code<W: Write>(ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig)
 
 // still todo:
     // saving registers
-    // register allocation is messed up, need to ensure you can't assign registers to more than one value
-        // specifically it just kinda brute forces calling conventions
-    // unconditional branches just are not getting buffered for some reason
     // need to do the whole jump to epilogue instead of just returning thing
 
 
