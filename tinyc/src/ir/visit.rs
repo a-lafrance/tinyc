@@ -20,9 +20,9 @@ pub trait IrVisitor: Sized {
     fn visit_read_instr(&mut self, _dest: Value) { }
     fn visit_return_instr(&mut self) { }
     fn visit_stored_binop_instr(&mut self, _opcode: StoredBinaryOpcode, _src1: Value, _src2: Value, _dest: Value) { }
+    fn visit_unconditional_branch_instr(&mut self, _dest: BasicBlock) { }
     fn visit_write_instr(&mut self, _src: Value) { }
     fn visit_writeln_instr(&mut self) { }
-    fn visit_unconditional_branch_instr(&mut self, _dest: BasicBlock) { }
 }
 
 pub fn walk_body(v: &mut impl IrVisitor, body: &Body) {

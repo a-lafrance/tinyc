@@ -7,3 +7,5 @@ Keeping tabs on all the bugs
 - [ ] Despite dead code elim, extra branch instruction still produced in then branch of if statements
 - [ ] Integer literals should be stored as signed rather than unsigned
 - [ ] A bunch of unused constants may still be allocated due to instruction selection
+- [ ] Register allocation doesn't understand calling conventions
+- [ ] Update simple register allocator for new location api
