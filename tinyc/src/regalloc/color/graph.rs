@@ -145,18 +145,23 @@ impl InterferenceGraph {
         }
     }
 
+    fn remove_node(&mut self, v: Value) -> Option<NodeEntry> {
+        let entry = self.nodes.remove(&v)?;
+
+        for dest in entry.edges() {
+            self.remove_edge(v, dest);
+        }
+
+        Some(entry)
+    }
+
     fn remove_lowest_cost_node(&mut self) -> Option<(Value, NodeEntry)> {
         let node = self.nodes.iter()
             .map(|(n, e)| (e.cost(), *n))
             .min()
             .map(|(_, n)| n)?;
-        let entry = self.nodes.remove(&node)?;
 
-        for dest in entry.edges() {
-            self.remove_edge(node, dest);
-        }
-
-        Some((node, entry))
+        self.remove_node(node).map(|e| (node, e))
     }
 
     fn coalesce_live_ranges(&mut self, body: &Body) {
@@ -201,13 +206,14 @@ impl InterferenceGraph {
         for instr in bb.body().iter().rev() {
             // remove dest value from live set if exists
             if let Some(result_val) = instr.result_val() {
-                live_set.remove(&result_val);
-                self.nodes.entry(result_val).or_default();
+                if live_set.remove(&result_val) {
+                    self.nodes.entry(result_val).or_default();
 
-                // add interferences to graph
-                for val in live_set.iter().copied() {
-                    // all operands in live set interfere with dest value
-                    self.add_edge(val, result_val);
+                    // add interferences to graph
+                    for val in live_set.iter().copied() {
+                        // all operands in live set interfere with dest value
+                        self.add_edge(val, result_val);
+                    }
                 }
             }
 
