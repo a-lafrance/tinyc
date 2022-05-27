@@ -1,15 +1,21 @@
 #[macro_export]
 macro_rules! define_e2e_test {
+    ($name:ident) => {
+        define_e2e_test!($name,);
+    };
+
     ($name:ident, $($flag:expr),*) => {
         #[test]
         fn $name() {
+            let (src_file, input_file, output_file) = make_test_file_names!($name);
+
             $crate::common::TestRun::start(
-                make_test_name!($name),
-                uuid::Uuid::new_v4(), 
+                src_file,
+                uuid::Uuid::new_v4(),
                 make_flags!($($flag),*),
-            ).run();
+            ).run(input_file, output_file);
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -19,6 +25,10 @@ macro_rules! make_flags {
 }
 
 #[macro_export]
-macro_rules! make_test_name {
-    ($name:ident) => (concat!("tests/rsrc/", stringify!($name), ".tiny"));
+macro_rules! make_test_file_names {
+    ($name:ident) => ((
+        concat!("tests/rsrc/", stringify!($name), ".tiny"),
+        concat!("tests/rsrc/", stringify!($name), ".in"),
+        concat!("tests/rsrc/", stringify!($name), ".out"),
+    ));
 }
