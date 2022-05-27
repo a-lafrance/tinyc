@@ -10,3 +10,4 @@ Keeping tabs on all the bugs
 - [ ] Register allocation doesn't understand calling conventions
 - [ ] Update simple register allocator for new location api
 - [ ] Extra returns getting generated all over the place
+- [ ] Const branching doesn't work for loops

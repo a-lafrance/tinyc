@@ -66,6 +66,6 @@ Roadmap for goals to accomplish this quarter:
         * `cfg` (or `ir-cfg`) dumps IR as graph
         * `asm` dumps assembly as text (_must_ appear with `--arch` for codegen)
 - [ ] Even more optimizations
-  - [ ] Compile time evaluation of constant comparisons/branching
+  - [x] Compile time evaluation of constant comparisons/branching
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
 - [ ] LLVM IR backend + actual LLVM integration (this one's pretty extreme lol)
