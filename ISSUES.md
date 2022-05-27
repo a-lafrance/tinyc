@@ -9,3 +9,4 @@ Keeping tabs on all the bugs
 - [ ] A bunch of unused constants may still be allocated due to instruction selection
 - [ ] Register allocation doesn't understand calling conventions
 - [ ] Update simple register allocator for new location api
+- [ ] Extra returns getting generated all over the place

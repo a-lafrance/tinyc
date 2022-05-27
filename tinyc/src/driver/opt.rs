@@ -11,6 +11,7 @@ pub struct OptConfig {
     pub const_prop: bool,
     pub dead_code_elim: bool,
     pub instr_select: bool,
+    pub reg_alloc: RegAllocator,
 }
 
 impl From<&Config> for OptConfig {
@@ -20,6 +21,7 @@ impl From<&Config> for OptConfig {
             const_prop: cfg.enable_const_prop || cfg.opt_level.enable_const_prop(),
             dead_code_elim: cfg.enable_dead_code_elim || cfg.opt_level.enable_dead_code_elim(),
             instr_select: cfg.enable_instr_select || cfg.opt_level.enable_instr_select(),
+            reg_alloc: cfg.reg_alloc.unwrap_or_else(|| cfg.opt_level.reg_alloc()),
         }
     }
 }
@@ -47,6 +49,13 @@ impl OptLevel {
 
     pub fn enable_instr_select(&self) -> bool {
         matches!(self, OptLevel::Full)
+    }
+
+    pub fn reg_alloc(&self) -> RegAllocator {
+        match self {
+            OptLevel::Bare => RegAllocator::Simple,
+            OptLevel::Default | OptLevel::Full => RegAllocator::Coloring,
+        }
     }
 }
 
@@ -89,3 +98,42 @@ impl Display for InvalidOptLevel {
 }
 
 impl Error for InvalidOptLevel { }
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegAllocator {
+    Simple,
+    Coloring,
+}
+
+impl Display for RegAllocator {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            RegAllocator::Simple => write!(f, "simple"),
+            RegAllocator::Coloring => write!(f, "coloring"),
+        }
+    }
+}
+
+impl FromStr for RegAllocator {
+    type Err = InvalidRegAllocator;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "simple" => Ok(RegAllocator::Simple),
+            "coloring" => Ok(RegAllocator::Coloring),
+            other => Err(InvalidRegAllocator(other.to_string())),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvalidRegAllocator(String);
+
+impl Display for InvalidRegAllocator {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "invalid register allocator '{}'", self.0)
+    }
+}
+
+impl Error for InvalidRegAllocator { }
