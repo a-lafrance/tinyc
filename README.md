@@ -23,17 +23,18 @@ Roadmap for goals to accomplish this quarter:
 - [x] IR-based optimizations
   - [x] Copy propagation
   - [x] Common subexpression elimination
-- [ ] Register allocation
+- [x] Register allocation
 - [x] DLX backend
   - [x] Codegen
 - [ ] Tons and tons of tests
-  - [ ] Scanner
+  - [x] Scanner
   - [x] Parser
   - [ ] IR generation
+  - [ ] Domination hierarchy construction
   - [ ] CSE
-    - [ ] Domination hierarchy construction
   - [ ] Constant propagation
   - [ ] Instruction selection
+  - [ ] Dead code elimination
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
@@ -59,6 +60,12 @@ Roadmap for goals to accomplish this quarter:
   * Likely manifests itself in 2 ways: optimization levels and "strict mode" (which enables extra semantic checks)
 
 ### Extreme Stretch Goals
+- [ ] Dump assembly during codegen
+    * Change `--dump-ir` to just `--dump` with 3 options:
+        * `ir` dumps IR as text
+        * `cfg` (or `ir-cfg`) dumps IR as graph
+        * `asm` dumps assembly as text (_must_ appear with `--arch` for codegen)
 - [ ] Even more optimizations
   - [ ] Compile time evaluation of constant comparisons/branching
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
+- [ ] LLVM IR backend + actual LLVM integration (this one's pretty extreme lol)
