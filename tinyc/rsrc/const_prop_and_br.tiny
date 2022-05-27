@@ -1,0 +1,16 @@
+main
+var a, b, c;
+
+{
+    let a <- 30;
+    let b <- 9 - (a / 5);
+    let c <- b * 4;
+
+    if c > 10
+    then
+        let c <- c - 10;
+    fi;
+
+    call OutputNum(c * (60 / a));
+    call OutputNewLine();
+}.

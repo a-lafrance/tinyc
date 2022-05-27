@@ -1,13 +1,14 @@
 mod cse;
 mod utils;
 
+use std::cmp::Ordering;
 use crate::{
     ast::{
         Assignment, Block, Computation, Expr, Factor, FuncCall, FuncDecl, IfStmt, Loop, Relation, Return, Stmt, Term,
         visit::{self, AstVisitor},
     },
     driver::opt::OptConfig,
-    utils::{Builtin, Keyword},
+    utils::{Builtin, Keyword, RelOp},
 };
 use self::{
     cse::{CseCache, IndexableInstr},
@@ -189,6 +190,13 @@ impl IrBodyGenerator {
 
     fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<u32> {
         if self.opt.const_prop {
+            // Special case if the values aren't constant, but you're comparing a value to itself
+            if let StoredBinaryOpcode::Cmp = op {
+                if v1 == v2 {
+                    return Some(0);
+                }
+            }
+
             let c1 = self.const_alloc.const_for_val(v1)?;
             let c2 = self.const_alloc.const_for_val(v2)?;
 
@@ -197,12 +205,38 @@ impl IrBodyGenerator {
                 StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
                 StoredBinaryOpcode::Mul => Some(c1 * c2),
                 StoredBinaryOpcode::Div => Some(c1 / c2),
-                StoredBinaryOpcode::Cmp => None, // TODO: can do a different kind of optimization for cmp
+                StoredBinaryOpcode::Cmp => Some(self.compute_const_cmp(c1, c2)),
                 StoredBinaryOpcode::Phi => None,
             }
         } else {
             // Always fail the const computation if const prop is disabled
             None
+        }
+    }
+
+    // Returns the result of the conditional branch if it can be evaluated at compile time
+    fn try_const_conditional_branch(&self, op: RelOp, cmp_val: Value) -> Option<bool> {
+        if self.opt.const_prop {
+            let cmp = self.const_alloc.const_for_val(cmp_val)?;
+
+            Some(match op {
+                RelOp::Eq => cmp == 0,
+                RelOp::Ne => cmp != 0,
+                RelOp::Gt => cmp == 2,
+                RelOp::Lt => cmp == 1,
+                RelOp::Ge => cmp != 1,
+                RelOp::Le => cmp != 2,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn compute_const_cmp(&self, lhs: u32, rhs: u32) -> u32 {
+        match lhs.cmp(&rhs) {
+            Ordering::Equal => 0,
+            Ordering::Less => 1,
+            Ordering::Greater => 2,
         }
     }
 }
@@ -345,53 +379,68 @@ impl AstVisitor for IrBodyGenerator {
         let condition_val = self.last_val.expect("invariant violated: expected value for if statement condition");
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
-        // fill new basic block for then
-        let then_bb = self.fill_basic_block_from(condition_bb, condition_bb);
-        self.visit_block(&if_stmt.then_block);
-        let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
-
-        // reset return status after saving status for then path
-        let mut both_paths_return = self.current_block_returns;
-        self.current_block_returns = false;
-
-        // pre-allocate join basic block
-        // use the then block as the basis for the join block's values to make phi discovery easier
-        let join_bb = self.make_basic_block_from(then_end_bb, condition_bb);
-
-        // connect inner blocks together depending on presence of else
-        let (dest_bb, phi_compare_bb, else_bb) = match if_stmt.else_block {
-            Some(ref else_block) => {
-                // if else block exists, fill new basic block for it
-                let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
+        // if condition val is const:
+            // eval branch at compile time
+            // select block to visit:
+                // if true, then block
+                // else, else block
+            // visit selected block and then join block
+        match self.try_const_conditional_branch(if_stmt.condition.op, condition_val) {
+            Some(true) => self.visit_block(&if_stmt.then_block),
+            Some(false) => if let Some(ref else_block) = if_stmt.else_block {
                 self.visit_block(else_block);
-                let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
-                both_paths_return = both_paths_return && self.current_block_returns;
-
-                // connect then block to join block via branch
-                // connect else block to join block via fallthrough
-                // FIXME: this produces an extra branch instruction when the then path returns
-                self.body.connect_via_branch(then_end_bb, join_bb);
-                self.body.connect_via_fallthrough(else_end_bb, join_bb);
-                (else_bb, else_end_bb, Some(else_bb))
-            },
+            }
 
             None => {
-                // connect then block to join block via fallthrough
-                both_paths_return = false; // "both paths return" implies there are 2 paths
-                self.body.connect_via_fallthrough(then_end_bb, join_bb);
-                (join_bb, condition_bb, None)
-            },
-        };
+                // fill new basic block for then
+                let then_bb = self.fill_basic_block_from(condition_bb, condition_bb);
+                self.visit_block(&if_stmt.then_block);
+                let then_end_bb = self.current_block.expect("invariant violated: then block must end in a bb");
 
-        // connect start block to destination block (either join or else) via conditional branch
-        let branch_opcode = BranchOpcode::from(if_stmt.condition.op.negated());
-        self.body.set_edge_for_block(condition_bb, ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb));
-        self.body.push_instr(condition_bb, Instruction::Branch(branch_opcode, condition_val, dest_bb));
+                // reset return status after saving status for then path
+                let mut both_paths_return = self.current_block_returns;
+                self.current_block_returns = false;
 
-        // fast-forward to join block
-        self.current_block = Some(join_bb);
-        self.current_block_returns = both_paths_return;
-        self.generate_phis(join_bb, phi_compare_bb, join_bb);
+                // pre-allocate join basic block
+                // use the then block as the basis for the join block's values to make phi discovery easier
+                let join_bb = self.make_basic_block_from(then_end_bb, condition_bb);
+
+                // connect inner blocks together depending on presence of else
+                let (dest_bb, phi_compare_bb, else_bb) = match if_stmt.else_block {
+                    Some(ref else_block) => {
+                        // if else block exists, fill new basic block for it
+                        let else_bb = self.fill_basic_block_from(condition_bb, condition_bb);
+                        self.visit_block(else_block);
+                        let else_end_bb = self.current_block.expect("invariant violated: else block must end in a bb");
+                        both_paths_return = both_paths_return && self.current_block_returns;
+
+                        // connect then block to join block via branch
+                        // connect else block to join block via fallthrough
+                        // FIXME: this produces an extra branch instruction when the then path returns
+                        self.body.connect_via_branch(then_end_bb, join_bb);
+                        self.body.connect_via_fallthrough(else_end_bb, join_bb);
+                        (else_bb, else_end_bb, Some(else_bb))
+                    },
+
+                    None => {
+                        // connect then block to join block via fallthrough
+                        both_paths_return = false; // "both paths return" implies there are 2 paths
+                        self.body.connect_via_fallthrough(then_end_bb, join_bb);
+                        (join_bb, condition_bb, None)
+                    },
+                };
+
+                // connect start block to destination block (either join or else) via conditional branch
+                let branch_opcode = BranchOpcode::from(if_stmt.condition.op.negated());
+                self.body.set_edge_for_block(condition_bb, ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb));
+                self.body.push_instr(condition_bb, Instruction::Branch(branch_opcode, condition_val, dest_bb));
+
+                // fast-forward to join block
+                self.current_block = Some(join_bb);
+                self.current_block_returns = both_paths_return;
+                self.generate_phis(join_bb, phi_compare_bb, join_bb);
+            }
+        }
     }
 
     fn visit_loop(&mut self, loop_stmt: &Loop) {
@@ -451,23 +500,28 @@ impl AstVisitor for IrBodyGenerator {
         self.visit_expr(&relation.rhs);
         let rhs = self.last_val.expect("invariant violated: expected expr");
 
-        let block = self.current_block.expect("invariant violated: relation must be in block");
-        let cse_index = IndexableInstr::Cmp(lhs, rhs);
+        match self.try_const_compute(StoredBinaryOpcode::Cmp, lhs, rhs) {
+            Some(const_result) => self.load_const(const_result),
+            None => {
+                let block = self.current_block.expect("invariant violated: relation must be in block");
+                let cse_index = IndexableInstr::Cmp(lhs, rhs);
 
-        self.last_val = self.cse_cache.as_ref()
-            .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index))
-            .or_else(|| {
-                let result = self.alloc_val();
-                let instr = Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, lhs, rhs, result);
+                self.last_val = self.cse_cache.as_ref()
+                    .and_then(|c| c.get_common_subexpr(&self.body, block, &cse_index))
+                    .or_else(|| {
+                        let result = self.alloc_val();
+                        let instr = Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, lhs, rhs, result);
 
-                if let Some(ref mut cse_cache) = self.cse_cache {
-                    cse_cache.insert_instr(block, cse_index, result);
-                }
+                        if let Some(ref mut cse_cache) = self.cse_cache {
+                            cse_cache.insert_instr(block, cse_index, result);
+                        }
 
-                self.body.push_instr(block, instr);
+                        self.body.push_instr(block, instr);
 
-                Some(result)
-            });
+                        Some(result)
+                    });
+            }
+        }
     }
 
     fn visit_return(&mut self, ret: &Return) {
