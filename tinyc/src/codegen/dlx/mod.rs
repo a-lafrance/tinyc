@@ -12,7 +12,7 @@ use crate::{
         visit::{self, IrVisitor},
         IrStore,
     },
-    regalloc::{Location, LocationTable, RegisterSet},
+    regalloc::{color::ColoringAllocator, /*simple::SimpleAllocator,*/ Location, LocationTable, RegisterSet},
     utils::Keyword,
 };
 use self::utils::{UnresolvedBranch, UnresolvedCall};
@@ -119,7 +119,26 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn emit_pop(&mut self, dest: Register) {
-        self.emit_instr(Instruction::F1(F1Opcode::Psh, dest, Register::RSP, Self::FP_OFFSET));
+        self.emit_instr(Instruction::F1(F1Opcode::Pop, dest, Register::RSP, Self::FP_OFFSET));
+    }
+
+    fn emit_branch(&mut self, opcode: F1Opcode, cmp_reg: Register, dest: BasicBlock) {
+        let offset = self.branch_offset(self.next_instr_addr, dest);
+
+        self.emit_instr(Instruction::F1(
+            opcode,
+            cmp_reg,
+            Register::R0,
+            offset.unwrap_or(0), // either encode branch or fill with temporary value
+        ));
+
+        if offset.is_none() {
+            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr - 1, dest);
+        }
+    }
+
+    fn emit_unconditional_branch(&mut self, dest: BasicBlock) {
+        self.emit_branch(F1Opcode::Beq, Register::R0, dest);
     }
 
     fn emit_reg_to_reg_move(&mut self, src: Register, dest: Register) {
@@ -158,9 +177,9 @@ impl<'b> DlxCodegen<'b> {
             self.emit_push(Register::RFP);
             self.emit_reg_to_reg_move(Register::RSP, Register::RFP);
 
-            let total_local_offset = self.current_context.loc_table.total_local_offset() as i16;
+            let total_local_offset = self.stack_offset(self.current_context.loc_table.total_local_offset());
 
-            if total_local_offset > 0 {
+            if total_local_offset != 0 {
                 // If locals are allocated on the stack, move the stack pointer up
                 self.emit_instr(Instruction::F1(
                     F1Opcode::Addi,
@@ -176,9 +195,9 @@ impl<'b> DlxCodegen<'b> {
         // TODO: mark addr of epilogue
         // Only emit anything if the stack is actually used
         if self.current_context.loc_table.stack_in_use() {
-            let total_local_offset = self.current_context.loc_table.total_local_offset() as i16;
+            let total_local_offset = self.stack_offset(self.current_context.loc_table.total_local_offset());
 
-            if total_local_offset > 0 {
+            if total_local_offset != 0 {
                 // If locals are allocated on the stack, move the stack pointer back down
                 self.emit_instr(Instruction::F1(
                     F1Opcode::Subi,
@@ -240,7 +259,7 @@ impl<'b> DlxCodegen<'b> {
         let reg = match self.loc_for_val(val) {
             Location::Reg(r) => r,
             Location::Stack(offset) => {
-                self.emit_load(dest_reg, Register::RFP, self.stack_offset(offset as i16));
+                self.emit_load(dest_reg, Register::RFP, self.stack_offset(offset));
                 dest_reg
             }
         };
@@ -328,8 +347,8 @@ impl<'b> DlxCodegen<'b> {
         self.current_context.known_consts.get(&val).copied()
     }
 
-    fn stack_offset(&self, offset: i16) -> i16 {
-        offset * -4
+    fn stack_offset(&self, index: isize) -> i16 {
+        (index as i16 + 2) * -4
     }
 
     fn push_stack_arg(&mut self, arg: Value) {
@@ -406,19 +425,8 @@ impl IrVisitor for DlxCodegen<'_> {
     }
 
     fn visit_branch_instr(&mut self, opcode: BranchOpcode, cmp: Value, dest: BasicBlock) {
-        let offset = self.branch_offset(self.next_instr_addr, dest);
         let cmp_reg = self.reg_for_val(cmp, Self::STACK_TMP1);
-
-        self.emit_instr(Instruction::F1(
-            F1Opcode::from(opcode),
-            cmp_reg,
-            Register::R0,
-            offset.unwrap_or(0), // either encode branch or fill with temporary value
-        ));
-
-        if offset.is_none() {
-            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr - 1, dest);
-        }
+        self.emit_branch(F1Opcode::from(opcode), cmp_reg, dest);
     }
 
     fn visit_call_instr(&mut self, func: &str) {
@@ -507,6 +515,10 @@ impl IrVisitor for DlxCodegen<'_> {
         });
     }
 
+    fn visit_unconditional_branch_instr(&mut self, dest: BasicBlock) {
+        self.emit_unconditional_branch(dest);
+    }
+
     fn visit_write_instr(&mut self, src: Value) {
         let src_reg = self.reg_for_val(src, Self::STACK_TMP1);
 
@@ -533,7 +545,7 @@ impl<'b> From<&'b Body> for BodyContext<'b> {
     fn from(body: &'b Body) -> BodyContext {
         BodyContext {
             body,
-            loc_table: LocationTable::alloc_from(body),
+            loc_table: LocationTable::alloc_from::<ColoringAllocator>(body),
             labels: HashMap::default(),
             reg_live_set: HashSet::default(),
             known_consts: HashMap::default(),

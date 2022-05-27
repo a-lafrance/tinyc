@@ -23,10 +23,10 @@ impl Body {
         }
     }
 
-    // #[cfg(test)]
-    // pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
-    //     Body { blocks, root }
-    // }
+    #[cfg(test)]
+    pub fn from(blocks: Vec<BasicBlockData>, root: Option<BasicBlock>) -> Body {
+        Body { blocks, root }
+    }
 
     pub fn blocks(&self) -> &[BasicBlockData] {
         &self.blocks
@@ -318,14 +318,14 @@ impl BasicBlockData {
         BasicBlockData::from(edge, bb.val_table.clone(), Some(dominator))
     }
 
-    // #[cfg(test)]
-    // pub fn with(
-    //     body: Vec<Instruction>,
-    //     edge: ControlFlowEdge,
-    //     dominator: Option<BasicBlock>
-    // ) -> BasicBlockData {
-    //     BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
-    // }
+    #[cfg(test)]
+    pub fn with(
+        body: Vec<Instruction>,
+        edge: ControlFlowEdge,
+        dominator: Option<BasicBlock>
+    ) -> BasicBlockData {
+        BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
+    }
 
     fn from(edge: ControlFlowEdge, val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {
         BasicBlockData {

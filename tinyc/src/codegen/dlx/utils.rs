@@ -13,7 +13,7 @@ macro_rules! do_with_store {
 
         // emit the store
         if let Some(offset) = offset {
-            $self.emit_store($reg, Register::RFP, $self.stack_offset(offset as i16));
+            $self.emit_store($reg, Register::RFP, $self.stack_offset(offset));
         }
     }
 }

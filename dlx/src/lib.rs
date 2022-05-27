@@ -15,7 +15,7 @@ const MEM_SIZE: usize = 256;
 pub struct Emulator<Stdin: Read, Stdout: Write> {
     registers: [u32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
-    data_mem: [u32; MEM_SIZE],
+    data_mem: [u8; MEM_SIZE],
     pc: usize,
     stdin: BufReader<Stdin>,
     stdout: Stdout,
@@ -58,12 +58,14 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     pub fn start(&mut self) {
         loop {
             match self.exec_current_instr() {
-                ControlFlow::Continue => (),
+                ControlFlow::Continue => self.pc += 1,
                 ControlFlow::Quit => break,
 
                 ControlFlow::Branch(offset) => {
-                    let pc = &mut (self.pc as isize);
-                    *pc += offset as isize;
+                    let mut pc = self.pc as isize;
+                    pc += offset as isize;
+
+                    self.pc = pc as usize;
                 }
 
                 ControlFlow::Jump(dest) => self.pc = dest,
@@ -142,7 +144,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             }
 
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) == 1 {
+                if self.load_reg(cmp_reg) == 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -150,7 +152,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             }
 
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) != 1 {
+                if self.load_reg(cmp_reg) != 0 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -174,7 +176,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             }
 
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) < 1 {
+                if self.load_reg(cmp_reg) == 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -182,7 +184,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             }
 
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) >= 1 {
+                if self.load_reg(cmp_reg) != 1 {
                     ControlFlow::Branch(offset)
                 } else {
                     ControlFlow::Continue
@@ -224,8 +226,8 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
                 let result = match lhs.cmp(&rhs) {
-                    Ordering::Less => 0,
-                    Ordering::Equal => 1,
+                    Ordering::Equal => 0,
+                    Ordering::Less => 1,
                     Ordering::Greater => 2,
                 };
                 self.store_reg(dest, result);
@@ -258,10 +260,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn fetch_instr(&mut self) -> Instruction {
-        let instr = self.instr_mem[self.pc];
-        self.pc += 1;
-
-        instr
+        self.instr_mem[self.pc]
     }
 
     fn load_reg(&self, r: Register) -> u32 {
@@ -275,11 +274,13 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn load_mem(&self, addr: u32) -> u32 {
-        self.data_mem[addr as usize]
+        let addr = addr as usize;
+        u32::from_be_bytes(self.data_mem[addr..addr + 4].try_into().unwrap())
     }
 
     fn store_mem(&mut self, addr: u32, val: u32) {
-        self.data_mem[addr as usize] = val;
+        let addr = addr as usize;
+        self.data_mem[addr..addr + 4].copy_from_slice(&val.to_be_bytes());
     }
 
     fn load_mem_into_reg(&mut self, addr: u32, dest: Register) {
