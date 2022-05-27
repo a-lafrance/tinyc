@@ -6,13 +6,13 @@ use std::{
 };
 use dlx::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, Register};
 use crate::{
-    driver::opt::OptConfig,
+    driver::opt::{OptConfig, RegAllocator},
     ir::{
         isa::{BasicBlock, BasicBlockData, Body, BranchOpcode, CCLocation, ControlFlowEdge, StoredBinaryOpcode, Value},
         visit::{self, IrVisitor},
         IrStore,
     },
-    regalloc::{color::ColoringAllocator, /*simple::SimpleAllocator,*/ Location, LocationTable, RegisterSet},
+    regalloc::{color::ColoringAllocator, simple::SimpleAllocator, Location, LocationTable, RegisterSet},
     utils::Keyword,
 };
 use self::utils::{UnresolvedBranch, UnresolvedCall};
@@ -68,7 +68,7 @@ impl<'b> DlxCodegen<'b> {
 
     pub fn from_main(main_body: &'b Body, opt: OptConfig) -> DlxCodegen<'b> {
         let mut gen = DlxCodegen {
-            current_context: BodyContext::from(main_body),
+            current_context: BodyContext::from(main_body, opt),
             buffer: Vec::with_capacity(64),
             body_labels: HashMap::default(),
             current_stack_args: Vec::with_capacity(8),
@@ -88,7 +88,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     pub fn visit_named_body(&mut self, name: String, body: &'b Body) {
-        self.current_context = BodyContext::from(body);
+        self.current_context = BodyContext::from(body, self.opt);
         self.insert_body_label(name);
         self.visit_body(body);
     }
@@ -541,11 +541,14 @@ struct BodyContext<'b> {
     pub known_consts: HashMap<Value, u32>,
 }
 
-impl<'b> From<&'b Body> for BodyContext<'b> {
-    fn from(body: &'b Body) -> BodyContext {
+impl<'b> BodyContext<'b> {
+    fn from(body: &'b Body, opt: OptConfig) -> BodyContext {
         BodyContext {
             body,
-            loc_table: LocationTable::alloc_from::<ColoringAllocator>(body),
+            loc_table: match opt.reg_alloc {
+                RegAllocator::Simple => LocationTable::alloc_from::<SimpleAllocator>(body),
+                RegAllocator::Coloring => LocationTable::alloc_from::<ColoringAllocator>(body),
+            },
             labels: HashMap::default(),
             reg_live_set: HashSet::default(),
             known_consts: HashMap::default(),

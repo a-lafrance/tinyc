@@ -15,7 +15,7 @@ use crate::{
 };
 use self::{
     dump::{dump_ir, IrDumpFormat},
-    opt::{OptConfig, OptLevel},
+    opt::{OptConfig, OptLevel, RegAllocator},
 };
 
 #[derive(Debug, ArgParse)]
@@ -47,6 +47,9 @@ pub(crate) struct Config {
 
     #[clap(long, help = "Manually enable instruction selection")]
     pub enable_instr_select: bool,
+
+    #[clap(long, help = "Manually select the register allocator to use")]
+    pub reg_alloc: Option<RegAllocator>,
 }
 
 pub fn start<Args, T>(args: Args)
