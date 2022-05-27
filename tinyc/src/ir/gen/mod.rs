@@ -379,13 +379,8 @@ impl AstVisitor for IrBodyGenerator {
         let condition_val = self.last_val.expect("invariant violated: expected value for if statement condition");
         let condition_bb = self.current_block.expect("invariant violated: no basic block for if statement condition");
 
-        // if condition val is const:
-            // eval branch at compile time
-            // select block to visit:
-                // if true, then block
-                // else, else block
-            // visit selected block and then join block
         match self.try_const_conditional_branch(if_stmt.condition.op, condition_val) {
+            // If you can evaluate the branch at compile time, directly visit that block and continue
             Some(true) => self.visit_block(&if_stmt.then_block),
             Some(false) => if let Some(ref else_block) = if_stmt.else_block {
                 self.visit_block(else_block);
