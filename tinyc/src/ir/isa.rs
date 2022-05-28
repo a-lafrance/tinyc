@@ -322,9 +322,10 @@ impl BasicBlockData {
     pub fn with(
         body: Vec<Instruction>,
         edge: ControlFlowEdge,
-        dominator: Option<BasicBlock>
+        dominator: Option<BasicBlock>,
+        val_table: HashMap<String, Value>,
     ) -> BasicBlockData {
-        BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
+        BasicBlockData { body, edge, dominator, val_table }
     }
 
     fn from(edge: ControlFlowEdge, val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {

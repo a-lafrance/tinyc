@@ -385,6 +385,7 @@ mod tests {
                 ],
                 ControlFlowEdge::Leaf,
                 None,
+                HashMap::new(),
             )],
             Some(BasicBlock(0)),
         );
@@ -438,6 +439,7 @@ mod tests {
                 ],
                 ControlFlowEdge::Leaf,
                 None,
+                HashMap::new(),
             )],
             Some(BasicBlock(0)),
         );
@@ -497,6 +499,7 @@ mod tests {
                     ],
                     ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(2)), BasicBlock(3)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -505,6 +508,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Branch(BasicBlock(3)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -512,6 +516,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Fallthrough(BasicBlock(3)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -527,6 +532,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Leaf,
                     None,
+                    HashMap::new(),
                 ),
             ],
             Some(BasicBlock(0)),
@@ -589,6 +595,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Fallthrough(BasicBlock(1)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -608,6 +615,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Loop(BasicBlock(2), BasicBlock(3)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -621,6 +629,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Branch(BasicBlock(1)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -630,6 +639,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Leaf,
                     None,
+                    HashMap::new(),
                 ),
             ],
             Some(BasicBlock(0)),
@@ -673,6 +683,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Fallthrough(BasicBlock(1)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -687,6 +698,7 @@ mod tests {
                     ],
                     ControlFlowEdge::IfStmt(BasicBlock(2), Some(BasicBlock(3)), BasicBlock(4)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -700,6 +712,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Branch(BasicBlock(4)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -712,6 +725,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Fallthrough(BasicBlock(4)),
                     None,
+                    HashMap::new(),
                 ),
                 BasicBlockData::with(
                     vec![
@@ -727,6 +741,7 @@ mod tests {
                     ],
                     ControlFlowEdge::Leaf,
                     None,
+                    HashMap::new(),
                 ),
             ],
             Some(BasicBlock(0))
