@@ -376,21 +376,6 @@ impl AstVisitor for IrBodyGenerator {
         visit::walk_func_decl(self, decl);
     }
 
-    // test cases:
-        // sanity check with else
-            // with phis
-            // no phis
-        // sanity check no else
-            // with phis
-            // no phis
-        // complex control flow (every then/else config)
-            // complex then branch
-                // if statement
-                // loop
-            // complex else branch
-                // if statement
-                // loop
-            // even deeper nesting?
     fn visit_if_stmt(&mut self, if_stmt: &IfStmt) {
         // check condition in start basic block
         self.visit_relation(&if_stmt.condition);
@@ -1262,7 +1247,7 @@ mod tests {
     }
 
     #[test]
-    fn define_and_call_many_funcs() {
+    fn define_and_call_many_funcs_ir_gen() {
         /*
             main
 
@@ -1560,5 +1545,648 @@ mod tests {
                 Some(BasicBlock(1)),
             ),
         ]);
+    }
+
+    #[test]
+    fn if_stmt_no_else_with_phis_ir_gen() {
+        /*
+            let a <- call InputNum();
+
+            if a > 0
+            then
+                let a <- a - 1;
+            fi;
+
+            call OutputNum(a);
+            call OutputNewLine();
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "a".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![],
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::If(IfStmt {
+                            condition: Relation {
+                                op: RelOp::Gt,
+                                lhs: Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                rhs: Expr {
+                                    root: Term {
+                                        root: Factor::Number(0),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            },
+                            then_block: Block {
+                                body: vec![
+                                    Stmt::Assignment(Assignment {
+                                        place: "a".to_string(),
+                                        value: Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("a".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![
+                                                (TermOp::Sub, Term {
+                                                    root: Factor::Number(1),
+                                                    ops: vec![],
+                                                })
+                                            ],
+                                        }
+                                    }),
+                                ],
+                            },
+                            else_block: None,
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNum.to_string(),
+                            args: vec![
+                                Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            ]
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![],
+                        }),
+                    ]
+                }
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir.bodies, hashmap! {
+            Keyword::Main.to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Read(Value(0)),
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Cmp,
+                                Value(0),
+                                Value(1),
+                                Value(2),
+                            ),
+                            Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(2)),
+                        ],
+                        ControlFlowEdge::IfStmt(BasicBlock(1), None, BasicBlock(2)),
+                        Some(BasicBlock(3)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Sub,
+                                Value(0),
+                                Value(3),
+                                Value(4),
+                            ),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(4) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Phi,
+                                Value(4),
+                                Value(0),
+                                Value(5),
+                            ),
+                            Instruction::Write(Value(5)),
+                            Instruction::Writeln,
+                            Instruction::End,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(5) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Const(0, Value(1)),
+                            Instruction::Const(1, Value(3)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(3)),
+            ),
+        });
+    }
+
+    #[test]
+    fn if_stmt_no_else_no_phis_ir_gen() {
+        /*
+            let a <- call InputNum();
+
+            if a > 0
+            then
+                call OutputNum(a);
+            fi;
+
+            call OutputNewLine();
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "a".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![],
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::If(IfStmt {
+                            condition: Relation {
+                                op: RelOp::Gt,
+                                lhs: Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                rhs: Expr {
+                                    root: Term {
+                                        root: Factor::Number(0),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            },
+                            then_block: Block {
+                                body: vec![
+                                    Stmt::FuncCall(FuncCall {
+                                        name: Builtin::OutputNum.to_string(),
+                                        args: vec![
+                                            Expr {
+                                                root: Term {
+                                                    root: Factor::VarRef("a".to_string()),
+                                                    ops: vec![],
+                                                },
+                                                ops: vec![],
+                                            },
+                                        ]
+                                    }),
+                                ],
+                            },
+                            else_block: None,
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![],
+                        }),
+                    ]
+                }
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir.bodies, hashmap! {
+            Keyword::Main.to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Read(Value(0)),
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Cmp,
+                                Value(0),
+                                Value(1),
+                                Value(2),
+                            ),
+                            Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(2)),
+                        ],
+                        ControlFlowEdge::IfStmt(BasicBlock(1), None, BasicBlock(2)),
+                        Some(BasicBlock(3)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Write(Value(0)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Writeln,
+                            Instruction::End,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Const(0, Value(1)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(3)),
+            ),
+        });
+    }
+
+    #[test]
+    fn if_stmt_with_else_with_phis_ir_gen() {
+        /*
+            let a <- call InputNum();
+
+            if a > 0
+            then
+                let a <- a - 1;
+            else
+                let a <- a + 1;
+            fi;
+
+            call OutputNum(a);
+            call OutputNewLine();
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "a".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![],
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::If(IfStmt {
+                            condition: Relation {
+                                op: RelOp::Gt,
+                                lhs: Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                rhs: Expr {
+                                    root: Term {
+                                        root: Factor::Number(0),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            },
+                            then_block: Block {
+                                body: vec![
+                                    Stmt::Assignment(Assignment {
+                                        place: "a".to_string(),
+                                        value: Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("a".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![
+                                                (TermOp::Sub, Term {
+                                                    root: Factor::Number(1),
+                                                    ops: vec![],
+                                                })
+                                            ],
+                                        }
+                                    }),
+                                ],
+                            },
+                            else_block: Some(Block {
+                                body: vec![
+                                    Stmt::Assignment(Assignment {
+                                        place: "a".to_string(),
+                                        value: Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("a".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![
+                                                (TermOp::Add, Term {
+                                                    root: Factor::Number(1),
+                                                    ops: vec![],
+                                                })
+                                            ],
+                                        }
+                                    }),
+                                ],
+                            }),
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNum.to_string(),
+                            args: vec![
+                                Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            ]
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![],
+                        }),
+                    ]
+                }
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir.bodies, hashmap! {
+            Keyword::Main.to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Read(Value(0)),
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Cmp,
+                                Value(0),
+                                Value(1),
+                                Value(2),
+                            ),
+                            Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(3)),
+                        ],
+                        ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(3)), BasicBlock(2)),
+                        Some(BasicBlock(4)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Sub,
+                                Value(0),
+                                Value(3),
+                                Value(4),
+                            ),
+                            Instruction::UnconditionalBranch(BasicBlock(2)),
+                        ],
+                        ControlFlowEdge::Branch(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(4) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Phi,
+                                Value(4),
+                                Value(5),
+                                Value(6),
+                            ),
+                            Instruction::Write(Value(6)),
+                            Instruction::Writeln,
+                            Instruction::End,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(6) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Add,
+                                Value(0),
+                                Value(3),
+                                Value(5),
+                            ),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(5) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Const(0, Value(1)),
+                            Instruction::Const(1, Value(3)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(4)),
+            ),
+        });
+    }
+
+    #[test]
+    fn if_stmt_with_else_no_phis_ir_gen() {
+        /*
+            let a <- call InputNum();
+
+            if a == 0
+            then
+                call OutputNum(0);
+            else
+                call OutputNum(1);
+            fi;
+
+            call OutputNewLine();
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "a".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![],
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::If(IfStmt {
+                            condition: Relation {
+                                op: RelOp::Eq,
+                                lhs: Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("a".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                rhs: Expr {
+                                    root: Term {
+                                        root: Factor::Number(0),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                            },
+                            then_block: Block {
+                                body: vec![
+                                    Stmt::FuncCall(FuncCall {
+                                        name: Builtin::OutputNum.to_string(),
+                                        args: vec![
+                                            Expr {
+                                                root: Term {
+                                                    root: Factor::Number(0),
+                                                    ops: vec![],
+                                                },
+                                                ops: vec![],
+                                            },
+                                        ]
+                                    }),
+                                ],
+                            },
+                            else_block: Some(Block {
+                                body: vec![
+                                    Stmt::FuncCall(FuncCall {
+                                        name: Builtin::OutputNum.to_string(),
+                                        args: vec![
+                                            Expr {
+                                                root: Term {
+                                                    root: Factor::Number(1),
+                                                    ops: vec![],
+                                                },
+                                                ops: vec![],
+                                            },
+                                        ]
+                                    }),
+                                ],
+                            }),
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![],
+                        }),
+                    ]
+                }
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir.bodies, hashmap! {
+            Keyword::Main.to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Read(Value(0)),
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Cmp,
+                                Value(0),
+                                Value(1),
+                                Value(2),
+                            ),
+                            Instruction::Branch(BranchOpcode::Bne, Value(2), BasicBlock(3)),
+                        ],
+                        ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(3)), BasicBlock(2)),
+                        Some(BasicBlock(4)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Write(Value(1)),
+                            Instruction::UnconditionalBranch(BasicBlock(2)),
+                        ],
+                        ControlFlowEdge::Branch(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Writeln,
+                            Instruction::End,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Write(Value(3)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "a".to_string() => Value(0) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Const(0, Value(1)),
+                            Instruction::Const(1, Value(3)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(4)),
+            ),
+        });
+    }
+
+    #[test]
+    fn if_stmt_nested_if_in_then_branch_ir_gen() {
+
+    }
+
+    #[test]
+    fn if_stmt_nested_loop_in_then_branch_ir_gen() {
+
+    }
+
+    #[test]
+    fn if_stmt_nested_if_in_else_branch_ir_gen() {
+
+    }
+
+    #[test]
+    fn if_stmt_nested_loop_in_else_branch_ir_gen() {
+
     }
 }
