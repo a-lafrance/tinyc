@@ -184,7 +184,7 @@ impl InterferenceGraph {
                     }
                 }
 
-                if cluster.len() > 0 {
+                if !cluster.is_empty() {
                     cluster.insert(result);
                     self.clusters.insert(result, cluster);
                 }
