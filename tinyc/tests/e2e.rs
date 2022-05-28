@@ -10,5 +10,13 @@
 // for ir optimization tests (and generally just optimization-type tests), just make them e2e tests rather than unit tests
 
 define_e2e_test!(arithmetic);
+define_e2e_test!(branched_arithmetic);
 define_e2e_test!(cmp_duplicate);
+define_e2e_test!(const_branch);
+define_e2e_test!(const_branch2);
+define_e2e_test!(const_branch_else);
+define_e2e_test!(const_prop_and_br);
+define_e2e_test!(const_prop);
+define_e2e_test!(const_prop2);
+define_e2e_test!(dead_val);
 define_e2e_test!(read_and_write);

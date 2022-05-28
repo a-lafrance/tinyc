@@ -1,7 +1,7 @@
 main
 var a, b, c; {
     let a <- 1 + 2;
-    let b <- a * 4 - 2 / 3;
+    let b <- a * 4 - 8 / 3;
 
     if b < 0
     then
@@ -9,4 +9,7 @@ var a, b, c; {
     else
         let c <- b / 2;
     fi;
+
+    call OutputNum(c);
+    call OutputNewLine();
 }.

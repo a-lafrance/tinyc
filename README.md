@@ -67,5 +67,6 @@ Roadmap for goals to accomplish this quarter:
         * `asm` dumps assembly as text (_must_ appear with `--arch` for codegen)
 - [ ] Even more optimizations
   - [x] Compile time evaluation of constant comparisons/branching
+- [ ] Migrate to `flexstr` wherever possible because it'll likely be much more efficient
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
 - [ ] LLVM IR backend + actual LLVM integration (this one's pretty extreme lol)
