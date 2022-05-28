@@ -78,5 +78,7 @@ Roadmap for goals to accomplish this quarter:
     - [ ] Bitwise operators
     - [ ] Break/continue for loops
     - [ ] else-if branches for if statements
+- [ ] Add immediate instructions to IR so that instruction selection goes there instead
+    * This also lets you detect only non-immediate uses of constants for things like register allocation
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
 - [ ] LLVM IR backend + actual LLVM integration (this one's pretty extreme lol)
