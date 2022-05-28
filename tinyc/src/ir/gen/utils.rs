@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use bimap::BiMap;
+use bimap::BiBTreeMap;
 use crate::{
     ast::{
         visit::AstVisitor,
@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct ConstAllocator {
-    mapping: BiMap<u32, Value>,
+    mapping: BiBTreeMap<u32, Value>,
 }
 
 impl ConstAllocator {

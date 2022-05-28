@@ -33,6 +33,7 @@ impl From<OptLevel> for OptConfig {
             const_prop: lvl.enable_const_prop(),
             dead_code_elim: lvl.enable_dead_code_elim(),
             instr_select: lvl.enable_instr_select(),
+            reg_alloc: lvl.reg_alloc(),
         }
     }
 }
