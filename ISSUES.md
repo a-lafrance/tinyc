@@ -11,3 +11,4 @@ Keeping tabs on all the bugs
 - [ ] Update simple register allocator for new location api
 - [ ] Extra returns getting generated all over the place
 - [ ] Const branching doesn't work for loops
+- [ ] Simple register allocator doesn't properly respect calling conventions

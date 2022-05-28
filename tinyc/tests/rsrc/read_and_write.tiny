@@ -1,0 +1,6 @@
+main
+
+{
+    call OutputNum(call InputNum());
+    call OutputNewLine();
+}.

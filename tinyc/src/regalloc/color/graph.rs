@@ -42,7 +42,7 @@ pub struct InterferenceGraph {
     // implement clusters by repurposing one of their nodes as the "root" node.
     // just remove the other nodes and edges from the graph and instead add them to the cluster.
     // then store a directory of clusters to know which nodes are and aren't supernodes for a cluster.
-    clusters: HashMap<Value, Vec<Value>>,
+    clusters: HashMap<Value, HashSet<Value>>,
     nodes: HashMap<Value, NodeEntry>,
 }
 
@@ -167,22 +167,25 @@ impl InterferenceGraph {
     fn coalesce_live_ranges(&mut self, body: &Body) {
         for bb in body.blocks() {
             for (lhs, rhs, result) in bb.phis() {
-                let mut cluster = Vec::with_capacity(3);
-                cluster.push(result);
+                // TODO: track cluster membership and substitute lhs/rhs/dest val for its cluster root
+                // if it's involved in another phi
+                // Also need to merge clusters if that happens
+                let mut cluster = HashSet::with_capacity(3);
 
                 if !self.has_edge(lhs, rhs) {
                     if !self.has_edge(lhs, result) {
-                        cluster.push(lhs);
+                        cluster.insert(lhs);
                         self.merge_nodes(lhs, result);
                     }
 
                     if !self.has_edge(rhs, result) {
-                        cluster.push(rhs);
+                        cluster.insert(rhs);
                         self.merge_nodes(rhs, result);
                     }
                 }
 
-                if cluster.len() > 1 {
+                if !cluster.is_empty() {
+                    cluster.insert(result);
                     self.clusters.insert(result, cluster);
                 }
             }
@@ -635,7 +638,7 @@ mod tests {
         let ig = InterferenceGraph::from(&body);
         assert_eq!(ig, InterferenceGraph {
             clusters: hashmap! {
-                Value(4) => vec![Value(4), Value(0), Value(3)]
+                Value(4) => hashset!{Value(4), Value(0), Value(3)}
             },
             nodes: hashmap! {
                 Value(1) => NodeEntry {

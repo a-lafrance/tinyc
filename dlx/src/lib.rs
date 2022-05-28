@@ -106,8 +106,8 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
                 let src = self.load_reg(src) as i64;
                 let result = match src.cmp(&(imm as i64)) {
-                    Ordering::Less => 0,
-                    Ordering::Equal => 1,
+                    Ordering::Equal => 0,
+                    Ordering::Less => 1,
                     Ordering::Greater => 2,
                 };
                 self.store_reg(dest, result);
@@ -225,6 +225,8 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             }
 
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
+                let lhs = self.load_reg(lhs);
+                let rhs = self.load_reg(rhs);
                 let result = match lhs.cmp(&rhs) {
                     Ordering::Equal => 0,
                     Ordering::Less => 1,
