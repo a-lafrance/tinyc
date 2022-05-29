@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 use bytes::{BufMut, Bytes, BytesMut};
+use discrim::FromDiscriminant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -73,7 +74,7 @@ impl TryFrom<u32> for Instruction {
     fn try_from(bytes: u32) -> Result<Self, Self::Error> {
         let opcode_bits = (bytes >> Instruction::OPCODE_SHIFT) as u8;
 
-        if let Ok(opcode) = F1Opcode::try_from(opcode_bits) {
+        if let Ok(opcode) = F1Opcode::from_discriminant(opcode_bits) {
             let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
             let r2_bits = (bytes >> Instruction::R2_SHIFT) & Instruction::REG_MASK;
 
@@ -83,7 +84,7 @@ impl TryFrom<u32> for Instruction {
                 Register::try_from(r2_bits as u8)?,
                 bytes as i16,
             ))
-        } else if let Ok(opcode) = F2Opcode::try_from(opcode_bits) {
+        } else if let Ok(opcode) = F2Opcode::from_discriminant(opcode_bits) {
             let r1_bits = (bytes >> Instruction::R1_SHIFT) & Instruction::REG_MASK;
             let r2_bits = (bytes >> Instruction::R2_SHIFT) & Instruction::REG_MASK;
             let r3_bits = bytes & Instruction::REG_MASK;
@@ -94,7 +95,7 @@ impl TryFrom<u32> for Instruction {
                 Register::try_from(r2_bits as u8)?,
                 Register::try_from(r3_bits as u8)?,
             ))
-        } else if let Ok(opcode) = F3Opcode::try_from(opcode_bits) {
+        } else if let Ok(opcode) = F3Opcode::from_discriminant(opcode_bits) {
             Ok(Instruction::F3(opcode, bytes & Instruction::F3_IMM_MASK))
         } else {
             Err(InvalidOpcode(opcode_bits).into())
@@ -144,8 +145,8 @@ impl Display for InvalidOpcode {
 impl Error for InvalidOpcode { }
 
 
+#[derive(Clone, Copy, Debug, Eq, FromDiscriminant, PartialEq)]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F1Opcode {
     Addi = 16, Subi, Muli, Divi, Cmpi = 21,
     Ldw = 32, Pop = 34, Stw = 36, Psh = 38,
@@ -185,35 +186,35 @@ impl Display for F1Opcode {
     }
 }
 
-impl TryFrom<u8> for F1Opcode {
-    type Error = InvalidOpcode;
+// impl TryFrom<u8> for F1Opcode {
+//     type Error = InvalidOpcode;
+//
+//     fn try_from(bits: u8) -> Result<Self, Self::Error> {
+//         match bits {
+//             16 => Ok(F1Opcode::Addi),
+//             17 => Ok(F1Opcode::Subi),
+//             18 => Ok(F1Opcode::Muli),
+//             19 => Ok(F1Opcode::Divi),
+//             21 => Ok(F1Opcode::Cmpi),
+//             32 => Ok(F1Opcode::Ldw),
+//             34 => Ok(F1Opcode::Pop),
+//             36 => Ok(F1Opcode::Stw),
+//             38 => Ok(F1Opcode::Psh),
+//             40 => Ok(F1Opcode::Beq),
+//             41 => Ok(F1Opcode::Bne),
+//             42 => Ok(F1Opcode::Blt),
+//             43 => Ok(F1Opcode::Bge),
+//             44 => Ok(F1Opcode::Ble),
+//             45 => Ok(F1Opcode::Bgt),
+//             53 => Ok(F1Opcode::Wrl),
+//             other => Err(InvalidOpcode(other)),
+//         }
+//     }
+// }
 
-    fn try_from(bits: u8) -> Result<Self, Self::Error> {
-        match bits {
-            16 => Ok(F1Opcode::Addi),
-            17 => Ok(F1Opcode::Subi),
-            18 => Ok(F1Opcode::Muli),
-            19 => Ok(F1Opcode::Divi),
-            21 => Ok(F1Opcode::Cmpi),
-            32 => Ok(F1Opcode::Ldw),
-            34 => Ok(F1Opcode::Pop),
-            36 => Ok(F1Opcode::Stw),
-            38 => Ok(F1Opcode::Psh),
-            40 => Ok(F1Opcode::Beq),
-            41 => Ok(F1Opcode::Bne),
-            42 => Ok(F1Opcode::Blt),
-            43 => Ok(F1Opcode::Bge),
-            44 => Ok(F1Opcode::Ble),
-            45 => Ok(F1Opcode::Bgt),
-            53 => Ok(F1Opcode::Wrl),
-            other => Err(InvalidOpcode(other)),
-        }
-    }
-}
 
-
+#[derive(Clone, Copy, Debug, Eq, FromDiscriminant, PartialEq)]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F2Opcode {
     Add, Sub, Mul, Div, Cmp = 5, Ret = 49, Rdd = 50, Wrd,
 }
@@ -239,27 +240,27 @@ impl Display for F2Opcode {
     }
 }
 
-impl TryFrom<u8> for F2Opcode {
-    type Error = InvalidOpcode;
+// impl TryFrom<u8> for F2Opcode {
+//     type Error = InvalidOpcode;
+//
+//     fn try_from(bits: u8) -> Result<Self, Self::Error> {
+//         match bits {
+//             0 => Ok(F2Opcode::Add),
+//             1 => Ok(F2Opcode::Sub),
+//             2 => Ok(F2Opcode::Mul),
+//             3 => Ok(F2Opcode::Div),
+//             5 => Ok(F2Opcode::Cmp),
+//             49 => Ok(F2Opcode::Ret),
+//             50 => Ok(F2Opcode::Rdd),
+//             51 => Ok(F2Opcode::Wrd),
+//             other => Err(InvalidOpcode(other)),
+//         }
+//     }
+// }
 
-    fn try_from(bits: u8) -> Result<Self, Self::Error> {
-        match bits {
-            0 => Ok(F2Opcode::Add),
-            1 => Ok(F2Opcode::Sub),
-            2 => Ok(F2Opcode::Mul),
-            3 => Ok(F2Opcode::Div),
-            5 => Ok(F2Opcode::Cmp),
-            49 => Ok(F2Opcode::Ret),
-            50 => Ok(F2Opcode::Rdd),
-            51 => Ok(F2Opcode::Wrd),
-            other => Err(InvalidOpcode(other)),
-        }
-    }
-}
 
-
+#[derive(Clone, Copy, Debug, Eq, FromDiscriminant, PartialEq)]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum F3Opcode {
     Jsr = 48
 }
