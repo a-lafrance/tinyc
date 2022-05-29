@@ -30,7 +30,7 @@ Roadmap for goals to accomplish this quarter:
   - [x] Scanner
   - [x] Parser
   - [x] AST visitor
-  - [ ] IR generation
+  - [x] IR generation
   - [ ] Domination hierarchy construction
   - [ ] CSE
   - [ ] Constant propagation
