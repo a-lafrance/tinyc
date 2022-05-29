@@ -730,12 +730,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn dead_code_empty_block_ir_gen() {
-        todo!();
-    }
-
-    #[test]
     fn simple_computation_ir_gen() {
         /*
             main
@@ -1121,9 +1115,67 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn complex_arithmetic_expr_ir_gen() {
-        todo!();
+        /*
+            2 * 3 + 8 / (6 - 2)
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_expr(&Expr {
+            root: Term {
+                root: Factor::Number(2),
+                ops: vec![
+                    (FactorOp::Mul, Factor::Number(3)),
+                ],
+            },
+            ops: vec![
+                (TermOp::Add, Term {
+                    root: Factor::Number(8),
+                    ops: vec![
+                        (FactorOp::Div, Factor::SubExpr(Box::new(Expr {
+                            root: Term {
+                                root: Factor::Number(6),
+                                ops: vec![],
+                            },
+                            ops: vec![
+                                (TermOp::Sub, Term {
+                                    root: Factor::Number(2),
+                                    ops: vec![],
+                                })
+                            ]
+                        })))
+                    ]
+                })
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(0), Value(1), Value(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Sub, Value(4), Value(0), Value(5)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Div, Value(3), Value(5), Value(6)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Add, Value(2), Value(6), Value(7)),
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Const(2, Value(0)),
+                        Instruction::Const(3, Value(1)),
+                        Instruction::Const(6, Value(4)),
+                        Instruction::Const(8, Value(3)),
+                    ],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ));
     }
 
     #[test]
