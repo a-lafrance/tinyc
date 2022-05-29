@@ -19,8 +19,11 @@ mod e2e {
     define_e2e_test!(dead_val);
     define_e2e_test!(if_else_if); // TODO: simulation output (pending phi stuff) for this and a bunch below too
     define_e2e_test!(if_else_loop);
+    define_e2e_test!(if_no_else_no_phis);
+    define_e2e_test!(if_no_else_with_phis);
     define_e2e_test!(if_then_if);
     define_e2e_test!(if_then_loop);
+    define_e2e_test!(if_with_else_with_phis);
     define_e2e_test!(loop_no_phis);
     define_e2e_test!(loop_with_if);
     define_e2e_test!(loop_with_loop);

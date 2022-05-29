@@ -1,0 +1,13 @@
+main
+var a;
+
+{
+    let a <- call InputNum();
+
+    if a > 0
+    then
+        call OutputNum(a);
+    fi;
+
+    call OutputNewLine();
+}.
