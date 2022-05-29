@@ -492,8 +492,6 @@ impl AstVisitor for IrBodyGenerator {
         self.current_block = Some(post_bb);
     }
 
-    // test cases:
-        // sanity check each relop
     fn visit_relation(&mut self, relation: &Relation) {
         self.visit_expr(&relation.lhs);
         let lhs = self.last_val.expect("invariant violated: expected expr");
@@ -525,9 +523,6 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
-    // test cases:
-        // with value
-        // no value
     fn visit_return(&mut self, ret: &Return) {
         visit::walk_return(self, ret);
         let block = self.current_block.expect("invariant violated: return must be in block");
@@ -2166,5 +2161,119 @@ mod tests {
                 Some(BasicBlock(4)),
             ),
         });
+    }
+
+    #[test]
+    fn relop_ir_gen() {
+        /*
+            0 == 0
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_relation(&Relation {
+            op: RelOp::Eq,
+            lhs: Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            rhs: Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Cmp,
+                            Value(0),
+                            Value(0),
+                            Value(1),
+                        )
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![Instruction::Const(0, Value(0))],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ))
+    }
+
+    // with value
+    // no value
+    #[test]
+    fn return_with_value_ir_gen() {
+        /*
+            return 0
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_return(&Return {
+            value: Some(Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            })
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Move(Value(0), CCLocation::RetVal),
+                        Instruction::Return,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![Instruction::Const(0, Value(0))],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ))
+    }
+
+    #[test]
+    fn return_no_value_ir_gen() {
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_return(&Return {
+            value: None
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Return,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(0)),
+        ))
     }
 }
