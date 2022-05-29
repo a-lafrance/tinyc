@@ -19,4 +19,5 @@ define_e2e_test!(const_prop_and_br);
 define_e2e_test!(const_prop);
 define_e2e_test!(const_prop2);
 define_e2e_test!(dead_val);
+define_e2e_test!(if_then_if); // TODO: simulation output (pending phi stuff)
 define_e2e_test!(read_and_write);
