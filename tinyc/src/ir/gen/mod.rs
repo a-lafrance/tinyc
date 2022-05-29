@@ -535,19 +535,12 @@ impl AstVisitor for IrBodyGenerator {
         self.current_block_returns = true;
     }
 
-    // test cases:
-        // sanity check each kind of statement
     fn visit_stmt(&mut self, stmt: &Stmt) {
         if !self.opt.dead_code_elim || !self.current_block_returns {
             visit::walk_stmt(self, stmt);
         }
     }
 
-    // test cases:
-        // just one factor
-        // just one factor op
-        // many factor ops
-        // MAKE SURE TO TEST BOTH FACTOR OPS
     fn visit_term(&mut self, term: &Term) {
         self.visit_factor(&term.root);
 
@@ -591,7 +584,7 @@ mod tests {
     use std::collections::HashMap;
     use maplit::hashmap;
     use crate::{
-        ast::{Return, TermOp},
+        ast::{FactorOp, Return, TermOp},
         driver::opt::OptLevel,
         ir::isa::{BasicBlock, BasicBlockData},
         utils::{Builtin, Keyword, RelOp},
@@ -2275,5 +2268,112 @@ mod tests {
             ],
             Some(BasicBlock(0)),
         ))
+    }
+
+    #[test]
+    fn single_factor_term_ir_gen() {
+        /*
+            5
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(5),
+            ops: vec![],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: Vec::new(),
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn single_mul_term_ir_gen() {
+        /*
+            5 * 3
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(5),
+            ops: vec![
+                (FactorOp::Mul, Factor::Number(3))
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(0), Value(1), Value(2))
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(3, Value(1)), Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn many_factor_term_ir_gen() {
+        /*
+            6 / 3 * 7
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(6),
+            ops: vec![
+                (FactorOp::Div, Factor::Number(3)),
+                (FactorOp::Mul, Factor::Number(7)),
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Div, Value(0), Value(1), Value(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(2), Value(3), Value(4)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![
+                        Instruction::Const(3, Value(1)),
+                        Instruction::Const(6, Value(0)),
+                        Instruction::Const(7, Value(3)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
     }
 }
