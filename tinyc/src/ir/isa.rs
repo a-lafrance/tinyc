@@ -9,10 +9,10 @@ use crate::{
 use dlx::isa::{F1Opcode, F2Opcode};
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Body {
-    blocks: Vec<BasicBlockData>,
-    root: Option<BasicBlock>,
+    pub(super) blocks: Vec<BasicBlockData>,
+    pub(super) root: Option<BasicBlock>,
 }
 
 impl Body {
@@ -301,12 +301,12 @@ impl Display for BasicBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BasicBlockData {
-    body: Vec<Instruction>,
-    val_table: HashMap<String, Value>,
-    edge: ControlFlowEdge,
-    dominator: Option<BasicBlock>,
+    pub(super) body: Vec<Instruction>,
+    pub(super) val_table: HashMap<String, Value>,
+    pub(super) edge: ControlFlowEdge,
+    pub(super) dominator: Option<BasicBlock>,
 }
 
 impl BasicBlockData {
@@ -322,9 +322,10 @@ impl BasicBlockData {
     pub fn with(
         body: Vec<Instruction>,
         edge: ControlFlowEdge,
-        dominator: Option<BasicBlock>
+        dominator: Option<BasicBlock>,
+        val_table: HashMap<String, Value>,
     ) -> BasicBlockData {
-        BasicBlockData { body, edge, dominator, val_table: HashMap::new() }
+        BasicBlockData { body, edge, dominator, val_table }
     }
 
     fn from(edge: ControlFlowEdge, val_table: HashMap<String, Value>, dominator: Option<BasicBlock>) -> BasicBlockData {

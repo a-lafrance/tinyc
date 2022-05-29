@@ -1,0 +1,24 @@
+main
+var target, counter, innerCounter;
+
+{
+    let target <- call InputNum();
+    let counter <- 0;
+
+    while counter < target
+    do
+        let innerCounter <- 0;
+
+        while innerCounter < counter
+        do
+            call OutputNum(innerCounter);
+            let innerCounter <- innerCounter + 1;
+        od;
+
+        call OutputNewLine();
+        let counter <- counter + 1;
+    od;
+    
+    call OutputNum(target);
+    call OutputNewLine();
+}.

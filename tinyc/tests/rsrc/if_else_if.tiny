@@ -1,0 +1,20 @@
+main
+var a;
+
+{
+    let a <- call InputNum();
+
+    if a == 0
+    then
+        call OutputNum(0);
+    else
+        if a > 0
+        then
+            call OutputNum(1);
+        else
+            call OutputNum(2);
+        fi;
+    fi;
+
+    call OutputNewLine();
+}.

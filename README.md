@@ -29,6 +29,7 @@ Roadmap for goals to accomplish this quarter:
 - [ ] Tons and tons of tests
   - [x] Scanner
   - [x] Parser
+  - [x] AST visitor
   - [ ] IR generation
   - [ ] Domination hierarchy construction
   - [ ] CSE
@@ -38,9 +39,13 @@ Roadmap for goals to accomplish this quarter:
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
+  - [ ] IR visitor
   - [ ] Register allocation
   - [ ] Codegen
+    - [ ] Recursion is a big edge case
   - [ ] End to end
+    - [ ] Full pipeline tests (build and run DLX binary)
+    - [ ] IR generation tests (verify IR for actual programs)
 
 ### Stretch Goals
 - [x] Constant propagation
@@ -68,5 +73,13 @@ Roadmap for goals to accomplish this quarter:
 - [ ] Even more optimizations
   - [x] Compile time evaluation of constant comparisons/branching
 - [ ] Migrate to `flexstr` wherever possible because it'll likely be much more efficient
+- [ ] Additional language features
+    - [ ] Logical operators (and/or/not)
+    - [ ] Bit shift operators
+    - [ ] Bitwise operators
+    - [ ] Break/continue for loops
+    - [ ] else-if branches for if statements
+- [ ] Add immediate instructions to IR so that instruction selection goes there instead
+    * This also lets you detect only non-immediate uses of constants for things like register allocation
 - [ ] Complete backend for a real target (probably either ARM/macOS, x86/Linux, or ARM/Linux)
 - [ ] LLVM IR backend + actual LLVM integration (this one's pretty extreme lol)

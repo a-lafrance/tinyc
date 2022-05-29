@@ -16,8 +16,11 @@ jobs:
                   toolchain: stable
                   components: clippy
 
+            - name: Install just
+              run: cargo install just
+
             - name: Run clippy
-              run: cargo clippy
+              run: just check
     test:
         runs-on: ubuntu-latest
         steps:

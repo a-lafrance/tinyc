@@ -86,6 +86,7 @@ impl IrBodyGenerator {
 
     fn new(opt: OptConfig) -> IrBodyGenerator {
         let cse_cache = if opt.cse { Some(CseCache::new()) } else { None };
+
         IrBodyGenerator {
             body: Body::new(),
             const_alloc: ConstAllocator::default(),
@@ -96,6 +97,12 @@ impl IrBodyGenerator {
             current_block_returns: false,
             opt,
         }
+    }
+
+    #[cfg(test)]
+    pub(self) fn into_body(mut self) -> Body {
+        self.const_alloc.make_prelude_block(&mut self.body);
+        self.body
     }
 
     pub(self) fn alloc_val(&mut self) -> Value {
@@ -161,7 +168,7 @@ impl IrBodyGenerator {
         let bb2_data = self.body.basic_block_data(bb2);
         let mismatches = bb1_data.values().filter_map(|(var, val)| {
             let val = *val;
-            let other_val = bb2_data.get_val(var).expect("invariant violated: var not found");
+            let other_val = bb2_data.get_val(var)?;
 
             if val != other_val {
                 Some((var.to_string(), val, other_val))
@@ -252,8 +259,8 @@ impl AstVisitor for IrBodyGenerator {
     }
 
     fn visit_block(&mut self, block: &Block) {
-        let bb = self.current_block.expect("invariant violated: basic block not created for block");
         visit::walk_block(self, block);
+        let bb = self.current_block.expect("invariant violated: basic block not created for block");
 
         if self.body.basic_block_data(bb).is_empty() {
             // FIXME: not triggering for some reason? specifically w/ dead code elimination
@@ -309,23 +316,27 @@ impl AstVisitor for IrBodyGenerator {
         match factor {
             Factor::VarRef(var) => self.load_var(var),
             Factor::Number(n) => self.load_const(*n),
-            _ => visit::walk_factor(self, factor),
+            f => visit::walk_factor(self, f),
         }
     }
 
     fn visit_func_call(&mut self, call: &FuncCall) {
-        let instr = match Builtin::from(&call.name) {
+        let block = self.current_block.expect("invariant violated: func call must be in block");
+
+        match Builtin::from(&call.name) {
             Some(Builtin::InputNum) => {
                 let val = self.alloc_val();
                 self.last_val = Some(val);
-
-                Some(Instruction::Read(val))
+                self.body.push_instr(block, Instruction::Read(val));
             },
             Some(Builtin::OutputNum) => {
                 self.visit_expr(&call.args[0]); // FIXME: a bit unsafe
-                Some(Instruction::Write(self.last_val.expect("invariant violated: expected expr")))
+                self.body.push_instr(
+                    block,
+                    Instruction::Write(self.last_val.expect("invariant violated: expected expr"))
+                );
             },
-            Some(Builtin::OutputNewLine) => Some(Instruction::Writeln),
+            Some(Builtin::OutputNewLine) => self.body.push_instr(block, Instruction::Writeln),
             None => {
                 // _can't_ cse calls because they may have side effects
                     // a more robust optimization could track which functions do and don't have side effects but eh
@@ -348,15 +359,7 @@ impl AstVisitor for IrBodyGenerator {
                 self.body.push_instr(block, Instruction::Bind(dest_val, CCLocation::RetVal));
 
                 self.last_val = Some(dest_val);
-                None
             },
-        };
-
-        if let Some(instr) = instr {
-            self.body.push_instr(
-                self.current_block.expect("invariant violated: func call must be in block"),
-                instr
-            );
         }
     }
 
@@ -459,8 +462,9 @@ impl AstVisitor for IrBodyGenerator {
 
         let body_bb = self.fill_basic_block_from(start_bb, start_bb);
         self.visit_block(&loop_stmt.body);
+        let body_end_bb = self.current_block.expect("invariant violated: expected block");
 
-        self.body.connect_via_branch(body_bb, start_bb);
+        self.body.connect_via_branch(body_end_bb, start_bb);
         let post_bb = self.make_basic_block_from(start_bb, start_bb);
 
         self.current_block = Some(start_bb);
@@ -468,7 +472,7 @@ impl AstVisitor for IrBodyGenerator {
         for (var, mut phi) in phis.into_iter() {
             match phi {
                 Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, _, ref mut src2, _) => *src2 = self.body
-                    .val_in_bb(body_bb, &var)
+                    .val_in_bb(body_end_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
             }
@@ -569,5 +573,1231 @@ impl AstVisitor for IrBodyGenerator {
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::HashMap;
+    use maplit::hashmap;
+    use crate::{
+        ast::{FactorOp, Return, TermOp},
+        driver::opt::OptLevel,
+        ir::isa::{BasicBlock, BasicBlockData},
+        utils::{Builtin, Keyword, RelOp},
+    };
+
+    fn make_ir_generator(lvl: OptLevel) -> IrBodyGenerator {
+        let opt = OptConfig::from(lvl);
+        let mut gen = IrBodyGenerator::new(opt);
+        gen.current_block = Some(gen.body.make_new_root());
+
+        gen
+    }
+
+    #[test]
+    fn assignment_ir_gen() {
+        /*
+            let x <- 1;
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_assignment(&Assignment {
+            place: "x".to_string(),
+            value: Expr {
+                root: Term {
+                    root: Factor::Number(1),
+                    ops: Vec::new(),
+                },
+                ops: Vec::new(),
+            }
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![],
+                    val_table: hashmap!{"x".to_string() => Value(0)},
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(1, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(1)),
+        })
+    }
+
+    #[test]
+    fn empty_block_ir_gen() {
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Nop],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    #[test]
+    fn single_stmt_block_ir_gen() {
+        /*
+            {
+                return;
+            }.
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![Stmt::Return(Return { value: None })]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Return],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    #[test]
+    fn many_stmt_block_ir_gen() {
+        /*
+            {
+                call OutputNum(5);
+                call OutputNewLine();
+            }
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_block(&Block {
+            body: vec![
+                Stmt::FuncCall(FuncCall {
+                    name: Builtin::OutputNum.to_string(),
+                    args: vec![Expr {
+                        root: Term {
+                            root: Factor::Number(5),
+                            ops: vec![],
+                        },
+                        ops: vec![],
+                    }]
+                }),
+                Stmt::FuncCall(FuncCall {
+                    name: Builtin::OutputNewLine.to_string(),
+                    args: vec![],
+                }),
+            ]
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Write(Value(0)), Instruction::Writeln],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn simple_computation_ir_gen() {
+        /*
+            main
+            var x;
+
+            {
+                let x <- call InputNum();
+                call OutputNum(x);
+                call OutputNewLine();
+            }.
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "x".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![]
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNum.to_string(),
+                            args: vec![Expr {
+                                root: Term {
+                                    root: Factor::VarRef("x".to_string()),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }]
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![]
+                        }),
+                    ],
+                },
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir, IrStore {
+            bodies: hashmap!{
+                Keyword::Main.to_string() => Body {
+                    blocks: vec![
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Read(Value(0)),
+                                Instruction::Write(Value(0)),
+                                Instruction::Writeln,
+                                Instruction::End,
+                            ],
+                            val_table: hashmap!{"x".to_string() => Value(0)},
+                            edge: ControlFlowEdge::Leaf,
+                            dominator: None,
+                        }
+                    ],
+                    root: Some(BasicBlock(0)),
+                },
+            },
+        });
+    }
+
+    #[test]
+    fn complex_computation_ir_gen() {
+        /*
+            main
+            var x;
+
+            {
+                let x <- call InputNum();
+                call OutputNum(x);
+                call OutputNewLine();
+
+                if x > 0
+                then
+                    call OutputNum(1);
+                else
+                    call OutputNum(0);
+                fi;
+
+                call OutputNewLine();
+            }.
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![],
+                body: Block {
+                    body: vec![
+                        Stmt::Assignment(Assignment {
+                            place: "x".to_string(),
+                            value: Expr {
+                                root: Term {
+                                    root: Factor::Call(FuncCall {
+                                        name: Builtin::InputNum.to_string(),
+                                        args: vec![]
+                                    }),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNum.to_string(),
+                            args: vec![Expr {
+                                root: Term {
+                                    root: Factor::VarRef("x".to_string()),
+                                    ops: vec![],
+                                },
+                                ops: vec![],
+                            }]
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![]
+                        }),
+                        Stmt::If(IfStmt {
+                            condition: Relation {
+                                lhs: Expr {
+                                    root: Term {
+                                        root: Factor::VarRef("x".to_string()),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                rhs: Expr {
+                                    root: Term {
+                                        root: Factor::Number(0),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                },
+                                op: RelOp::Gt,
+                            },
+                            then_block: Block {
+                                body: vec![
+                                    Stmt::FuncCall(FuncCall {
+                                        name: Builtin::OutputNum.to_string(),
+                                        args: vec![Expr {
+                                            root: Term {
+                                                root: Factor::Number(1),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        }]
+                                    }),
+                                ],
+                            },
+                            else_block: Some(Block {
+                                body: vec![
+                                    Stmt::FuncCall(FuncCall {
+                                        name: Builtin::OutputNum.to_string(),
+                                        args: vec![Expr {
+                                            root: Term {
+                                                root: Factor::Number(0),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        }]
+                                    }),
+                                ],
+                            }),
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: Builtin::OutputNewLine.to_string(),
+                            args: vec![]
+                        }),
+                    ],
+                },
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir, IrStore {
+            bodies: hashmap!{
+                Keyword::Main.to_string() => Body {
+                    blocks: vec![
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Read(Value(0)),
+                                Instruction::Write(Value(0)),
+                                Instruction::Writeln,
+                                Instruction::StoredBinaryOp(
+                                    StoredBinaryOpcode::Cmp,
+                                    Value(0),
+                                    Value(1),
+                                    Value(2),
+                                ),
+                                Instruction::Branch(
+                                    BranchOpcode::Ble,
+                                    Value(2),
+                                    BasicBlock(3),
+                                ),
+                            ],
+                            val_table: hashmap!{"x".to_string() => Value(0)},
+                            edge: ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(3)), BasicBlock(2)),
+                            dominator: Some(BasicBlock(4)),
+                        },
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Write(Value(3)),
+                                Instruction::UnconditionalBranch(BasicBlock(2)),
+                            ],
+                            val_table: hashmap!{"x".to_string() => Value(0)},
+                            edge: ControlFlowEdge::Branch(BasicBlock(2)),
+                            dominator: Some(BasicBlock(0)),
+                        },
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Writeln,
+                                Instruction::End,
+                            ],
+                            val_table: hashmap!{"x".to_string() => Value(0)},
+                            edge: ControlFlowEdge::Leaf,
+                            dominator: Some(BasicBlock(0)),
+                        },
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Write(Value(1)),
+                            ],
+                            val_table: hashmap!{"x".to_string() => Value(0)},
+                            edge: ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                            dominator: Some(BasicBlock(0)),
+                        },
+                        BasicBlockData {
+                            body: vec![
+                                Instruction::Const(0, Value(1)),
+                                Instruction::Const(1, Value(3)),
+                            ],
+                            val_table: HashMap::new(),
+                            edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                            dominator: None,
+                        },
+                    ],
+                    root: Some(BasicBlock(4)),
+                },
+            },
+        });
+    }
+
+    #[test]
+    fn single_term_expr_ir_gen() {
+        /*
+            5
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_expr(&Expr {
+            root: Term {
+                root: Factor::Number(5),
+                ops: vec![],
+            },
+            ops: vec![],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: Vec::new(),
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn single_add_expr_ir_gen() {
+        /*
+            5 + 3
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_expr(&Expr {
+            root: Term {
+                root: Factor::Number(5),
+                ops: vec![],
+            },
+            ops: vec![
+                (
+                    TermOp::Add,
+                    Term {
+                        root: Factor::Number(3),
+                        ops: vec![],
+                    },
+                )
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Add, Value(0), Value(1), Value(2))
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(3, Value(1)), Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn many_term_expr_ir_gen() {
+        /*
+            5 - 3 + 7
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_expr(&Expr {
+            root: Term {
+                root: Factor::Number(5),
+                ops: vec![],
+            },
+            ops: vec![
+                (
+                    TermOp::Sub,
+                    Term {
+                        root: Factor::Number(3),
+                        ops: vec![],
+                    },
+                ),
+                (
+                    TermOp::Add,
+                    Term {
+                        root: Factor::Number(7),
+                        ops: vec![],
+                    },
+                ),
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Sub, Value(0), Value(1), Value(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Add, Value(2), Value(3), Value(4)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![
+                        Instruction::Const(3, Value(1)),
+                        Instruction::Const(5, Value(0)),
+                        Instruction::Const(7, Value(3)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn complex_arithmetic_expr_ir_gen() {
+        /*
+            2 * 3 + 8 / (6 - 2)
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_expr(&Expr {
+            root: Term {
+                root: Factor::Number(2),
+                ops: vec![
+                    (FactorOp::Mul, Factor::Number(3)),
+                ],
+            },
+            ops: vec![
+                (TermOp::Add, Term {
+                    root: Factor::Number(8),
+                    ops: vec![
+                        (FactorOp::Div, Factor::SubExpr(Box::new(Expr {
+                            root: Term {
+                                root: Factor::Number(6),
+                                ops: vec![],
+                            },
+                            ops: vec![
+                                (TermOp::Sub, Term {
+                                    root: Factor::Number(2),
+                                    ops: vec![],
+                                })
+                            ]
+                        })))
+                    ]
+                })
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(0), Value(1), Value(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Sub, Value(4), Value(0), Value(5)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Div, Value(3), Value(5), Value(6)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Add, Value(2), Value(6), Value(7)),
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Const(2, Value(0)),
+                        Instruction::Const(3, Value(1)),
+                        Instruction::Const(6, Value(4)),
+                        Instruction::Const(8, Value(3)),
+                    ],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ));
+    }
+
+    #[test]
+    fn subexpr_factor_ir_gen() {
+        /*
+            5 + 6 as subexpr
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_factor(&Factor::SubExpr(Box::new(Expr {
+            root: Term {
+                root: Factor::Number(5),
+                ops: vec![],
+            },
+            ops: vec![(TermOp::Add, Term { root: Factor::Number(6), ops: vec![] })]
+        })));
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::StoredBinaryOp(StoredBinaryOpcode::Add, Value(0), Value(1), Value(2))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0)), Instruction::Const(6, Value(1))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn func_call_factor_ir_gen() {
+        /*
+            call OutputNewLine();
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_factor(&Factor::Call(FuncCall {
+            name: Builtin::OutputNewLine.to_string(),
+            args: Vec::new(),
+        }));
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Writeln],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    // this test covers all IO builtins, and also covers zero and one arg functions in the process
+    #[test]
+    fn io_builtin_func_call_ir_gen() {
+        /*
+            call OutputNum(call InputNum());
+            call OutputNewLine();
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_func_call(&FuncCall {
+            name: Builtin::OutputNum.to_string(),
+            args: vec![
+                Expr {
+                    root: Term {
+                        root: Factor::Call(FuncCall {
+                            name: Builtin::InputNum.to_string(),
+                            args: Vec::new(),
+                        }),
+                        ops: Vec::new(),
+                    },
+                    ops: Vec::new(),
+                },
+            ],
+        });
+        gen.visit_func_call(&FuncCall {
+            name: Builtin::OutputNewLine.to_string(),
+            args: Vec::new(),
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![Instruction::Read(Value(0)), Instruction::Write(Value(0)), Instruction::Writeln],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: None,
+                },
+            ],
+            root: Some(BasicBlock(0)),
+        });
+    }
+
+    #[test]
+    fn define_and_call_many_funcs_ir_gen() {
+        /*
+            main
+
+            void function PrintZero();
+            {
+                call OutputNum(0);
+                call OutputNewLine();
+            };
+
+            void function Println(n);
+            {
+                call OutputNum(n);
+                call OutputNewLine();
+            };
+
+            function PrintMax(x, y);
+            {
+                if x > y
+                then
+                    return x;
+                else
+                    return y;
+                fi;
+            };
+
+            {
+                call PrintZero();
+                call Println(call Max(2, 4));
+            }.
+        */
+
+        let ir = IrGenerator::gen(
+            &Computation {
+                funcs: vec![
+                    FuncDecl {
+                        returns_void: true,
+                        name: "PrintZero".to_string(),
+                        params: Vec::new(),
+                        body: Block {
+                            body: vec![
+                                Stmt::FuncCall(FuncCall {
+                                    name: Builtin::OutputNum.to_string(),
+                                    args: vec![
+                                        Expr {
+                                            root: Term {
+                                                root: Factor::Number(0),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        }
+                                    ],
+                                }),
+                                Stmt::FuncCall(FuncCall {
+                                    name: Builtin::OutputNewLine.to_string(),
+                                    args: Vec::new(),
+                                }),
+                            ],
+                        },
+                    },
+                    FuncDecl {
+                        returns_void: true,
+                        name: "Println".to_string(),
+                        params: vec!["n".to_string()],
+                        body: Block {
+                            body: vec![
+                                Stmt::FuncCall(FuncCall {
+                                    name: Builtin::OutputNum.to_string(),
+                                    args: vec![
+                                        Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("n".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        },
+                                    ],
+                                }),
+                                Stmt::FuncCall(FuncCall {
+                                    name: Builtin::OutputNewLine.to_string(),
+                                    args: Vec::new(),
+                                }),
+                            ],
+                        },
+                    },
+                    FuncDecl {
+                        returns_void: false,
+                        name: "Max".to_string(),
+                        params: vec!["x".to_string(), "y".to_string()],
+                        body: Block {
+                            body: vec![
+                                Stmt::If(IfStmt {
+                                    condition: Relation {
+                                        op: RelOp::Gt,
+                                        lhs: Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("x".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        },
+                                        rhs: Expr {
+                                            root: Term {
+                                                root: Factor::VarRef("y".to_string()),
+                                                ops: vec![],
+                                            },
+                                            ops: vec![],
+                                        },
+                                    },
+                                    then_block: Block {
+                                        body: vec![
+                                            Stmt::Return(Return {
+                                                value: Some(Expr {
+                                                    root: Term {
+                                                        root: Factor::VarRef("x".to_string()),
+                                                        ops: vec![],
+                                                    },
+                                                    ops: vec![],
+                                                })
+                                            })
+                                        ]
+                                    },
+                                    else_block: Some(Block {
+                                        body: vec![
+                                            Stmt::Return(Return {
+                                                value: Some(Expr {
+                                                    root: Term {
+                                                        root: Factor::VarRef("y".to_string()),
+                                                        ops: vec![],
+                                                    },
+                                                    ops: vec![],
+                                                })
+                                            })
+                                        ]
+                                    }),
+                                }),
+                            ],
+                        },
+                    },
+                ],
+                body: Block {
+                    body: vec![
+                        Stmt::FuncCall(FuncCall {
+                            name: "PrintZero".to_string(),
+                            args: vec![],
+                        }),
+                        Stmt::FuncCall(FuncCall {
+                            name: "Println".to_string(),
+                            args: vec![
+                                Expr {
+                                    root: Term {
+                                        root: Factor::Call(FuncCall {
+                                            name: "Max".to_string(),
+                                            args: vec![
+                                                Expr {
+                                                    root: Term {
+                                                        root: Factor::Number(2),
+                                                        ops: vec![],
+                                                    },
+                                                    ops: vec![],
+                                                },
+                                                Expr {
+                                                    root: Term {
+                                                        root: Factor::Number(4),
+                                                        ops: vec![],
+                                                    },
+                                                    ops: vec![],
+                                                }
+                                            ],
+                                        }),
+                                        ops: vec![],
+                                    },
+                                    ops: vec![],
+                                }
+                            ],
+                        }),
+                    ],
+                },
+            },
+            OptConfig::from(OptLevel::Bare),
+        );
+
+        assert_eq!(ir.bodies, hashmap![
+            "PrintZero".to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Write(Value(0)),
+                            Instruction::Writeln,
+                            // Instruction::Return,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(1)),
+                        HashMap::new(),
+                    ),
+                    BasicBlockData::with(
+                        vec![Instruction::Const(0, Value(0))],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(1)),
+            ),
+            "Println".to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Bind(Value(0), CCLocation::Arg(0)),
+                            Instruction::Write(Value(0)),
+                            Instruction::Writeln,
+                            // Instruction::Return,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        None,
+                        hashmap! { "n".to_string() => Value(0) },
+                    )
+                ],
+                Some(BasicBlock(0)),
+            ),
+            "Max".to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Bind(Value(0), CCLocation::Arg(0)),
+                            Instruction::Bind(Value(1), CCLocation::Arg(1)),
+                            Instruction::StoredBinaryOp(
+                                StoredBinaryOpcode::Cmp,
+                                Value(0),
+                                Value(1),
+                                Value(2),
+                            ),
+                            Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(3)),
+                        ],
+                        ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(3)), BasicBlock(2)),
+                        None,
+                        hashmap! { "x".to_string() => Value(0), "y".to_string() => Value(1) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Move(Value(0), CCLocation::RetVal),
+                            Instruction::Return,
+                            Instruction::UnconditionalBranch(BasicBlock(2)),
+                        ],
+                        ControlFlowEdge::Branch(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "x".to_string() => Value(0), "y".to_string() => Value(1) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Nop,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(0)),
+                        hashmap! { "x".to_string() => Value(0), "y".to_string() => Value(1) },
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Move(Value(1), CCLocation::RetVal),
+                            Instruction::Return,
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(2)),
+                        Some(BasicBlock(0)),
+                        hashmap! { "x".to_string() => Value(0), "y".to_string() => Value(1) },
+                    ),
+                ],
+                Some(BasicBlock(0)),
+            ),
+            Keyword::Main.to_string() => Body::from(
+                vec![
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Call("PrintZero".to_string()),
+                            Instruction::Bind(Value(0), CCLocation::RetVal),
+                            Instruction::Move(Value(1), CCLocation::Arg(0)),
+                            Instruction::Move(Value(2), CCLocation::Arg(1)),
+                            Instruction::Call("Max".to_string()),
+                            Instruction::Bind(Value(3), CCLocation::RetVal),
+                            Instruction::Move(Value(3), CCLocation::Arg(0)),
+                            Instruction::Call("Println".to_string()),
+                            Instruction::Bind(Value(4), CCLocation::RetVal),
+                            Instruction::End,
+                        ],
+                        ControlFlowEdge::Leaf,
+                        Some(BasicBlock(1)),
+                        HashMap::new(),
+                    ),
+                    BasicBlockData::with(
+                        vec![
+                            Instruction::Const(2, Value(1)),
+                            Instruction::Const(4, Value(2)),
+                        ],
+                        ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                        None,
+                        HashMap::new(),
+                    ),
+                ],
+                Some(BasicBlock(1)),
+            ),
+        ]);
+    }
+
+    #[test]
+    fn relop_ir_gen() {
+        /*
+            0 == 0
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_relation(&Relation {
+            op: RelOp::Eq,
+            lhs: Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+            rhs: Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            },
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::StoredBinaryOp(
+                            StoredBinaryOpcode::Cmp,
+                            Value(0),
+                            Value(0),
+                            Value(1),
+                        )
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![Instruction::Const(0, Value(0))],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ))
+    }
+
+    #[test]
+    fn return_with_value_ir_gen() {
+        /*
+            return 0
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_return(&Return {
+            value: Some(Expr {
+                root: Term {
+                    root: Factor::Number(0),
+                    ops: vec![],
+                },
+                ops: vec![],
+            })
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Move(Value(0), CCLocation::RetVal),
+                        Instruction::Return,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    Some(BasicBlock(1)),
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![Instruction::Const(0, Value(0))],
+                    ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(1)),
+        ))
+    }
+
+    #[test]
+    fn return_no_value_ir_gen() {
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_return(&Return {
+            value: None
+        });
+
+        assert_eq!(gen.into_body(), Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Return,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(0)),
+        ))
+    }
+
+    #[test]
+    fn single_factor_term_ir_gen() {
+        /*
+            5
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(5),
+            ops: vec![],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: Vec::new(),
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn single_mul_term_ir_gen() {
+        /*
+            5 * 3
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(5),
+            ops: vec![
+                (FactorOp::Mul, Factor::Number(3))
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(0), Value(1), Value(2))
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![Instruction::Const(3, Value(1)), Instruction::Const(5, Value(0))],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
+    }
+
+    #[test]
+    fn many_factor_term_ir_gen() {
+        /*
+            6 / 3 * 7
+        */
+
+        let mut gen = make_ir_generator(OptLevel::Bare);
+        gen.visit_term(&Term {
+            root: Factor::Number(6),
+            ops: vec![
+                (FactorOp::Div, Factor::Number(3)),
+                (FactorOp::Mul, Factor::Number(7)),
+            ],
+        });
+
+        assert_eq!(gen.into_body(), Body {
+            blocks: vec![
+                BasicBlockData {
+                    body: vec![
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Div, Value(0), Value(1), Value(2)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Mul, Value(2), Value(3), Value(4)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Leaf,
+                    dominator: Some(BasicBlock(1)),
+                },
+                BasicBlockData {
+                    body: vec![
+                        Instruction::Const(3, Value(1)),
+                        Instruction::Const(6, Value(0)),
+                        Instruction::Const(7, Value(3)),
+                    ],
+                    val_table: HashMap::new(),
+                    edge: ControlFlowEdge::Fallthrough(BasicBlock(0)),
+                    dominator: None,
+                }
+            ],
+            root: Some(BasicBlock(1)),
+        });
     }
 }

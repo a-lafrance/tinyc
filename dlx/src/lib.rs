@@ -7,6 +7,7 @@ use std::{
     error::Error,
     fs::File,
     io::{self, BufRead, BufReader, Read, Write},
+    path::Path,
 };
 use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, InstrDecodeError, Register};
 
@@ -23,9 +24,14 @@ pub struct Emulator<Stdin: Read, Stdout: Write> {
 }
 
 impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
-    pub fn load(prog_file: &str, stdin: Stdin, stdout: Stdout, quiet: bool) -> Result<Emulator<Stdin, Stdout>, LoadError> {
+    pub fn load(
+        prog_file: impl AsRef<Path>,
+        stdin: Stdin,
+        stdout: Stdout,
+        quiet: bool,
+    ) -> Result<Emulator<Stdin, Stdout>, LoadError> {
         // open file/bufreader for file
-        let f = File::open(prog_file)?;
+        let f = File::open(prog_file.as_ref())?;
         let mut reader = BufReader::new(f);
 
         // init instr memory to a large buffer

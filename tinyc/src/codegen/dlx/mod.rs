@@ -374,35 +374,36 @@ impl IrVisitor for DlxCodegen<'_> {
             visit::walk_basic_block(self, bb_data);
 
             match bb_data.edge() {
-                ControlFlowEdge::Leaf => (),
+                ControlFlowEdge::Leaf => {}
+
                 ControlFlowEdge::Fallthrough(dest) => {
                     self.load_and_visit_basic_block(dest);
-                },
+                }
+
                 ControlFlowEdge::Branch(dest) => {
                     self.load_and_visit_basic_block(dest);
-                },
-                ControlFlowEdge::IfStmt(then_bb, Some(else_bb), join_bb) => {
-                    // ONLY IF ELSE BLOCK
-                        // IF NO ELSE BLOCK, NO NEED FOR ANYTHING FANCY
-                    // save prev cutoff point
-                    let prev_cutoff_point = self.cutoff_point;
+                }
+
+                ControlFlowEdge::IfStmt(then_bb, else_bb, join_bb) => {
+                    // get a list of phis that need to be resolved from join bb, ie (dest, left, right)
 
                     // set cutoff point to join block
+                    let prev_cutoff_point = self.cutoff_point;
                     self.cutoff_point = Some(join_bb);
 
                     // visit then block
                     self.load_and_visit_basic_block(then_bb);
-                    // restore prev cutoff point
-                        // this will implicitly remove the cutoff point if there wasn't a prev
+
+                    // restore prev cutoff point, or erase cutoff point if there was no prev
                     self.cutoff_point = prev_cutoff_point;
 
-                    // visit else block
-                    self.load_and_visit_basic_block(else_bb);
-                },
-                ControlFlowEdge::IfStmt(then_bb, None, _) => {
-                    // visit then block, which will implicitly visit join block
-                    self.load_and_visit_basic_block(then_bb);
-                },
+                    // visit dest block
+                    match else_bb {
+                        Some(else_bb) => self.load_and_visit_basic_block(else_bb),
+                        None => self.load_and_visit_basic_block(join_bb),
+                    }
+                }
+
                 ControlFlowEdge::Loop(body_bb, follow_bb) => {
                     // visit body and follow blocks
                     self.load_and_visit_basic_block(body_bb);

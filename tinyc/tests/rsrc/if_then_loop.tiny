@@ -1,0 +1,21 @@
+main
+var a, b;
+
+{
+    let a <- call InputNum();
+
+    if a > 0
+    then
+        let b <- 0;
+
+        while b < a
+        do
+            let b <- b + 1;
+            call OutputNum(b);
+        od;
+    else
+        call OutputNum(0);
+    fi;
+
+    call OutputNewLine();
+}.

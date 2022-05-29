@@ -16,3 +16,6 @@ e2e SRC BIN *ARGS:
 
 file-bug CONTENT:
 	echo "- [ ] {{ CONTENT }}" >> ISSUES.md
+
+check:
+    cargo clippy --no-deps -- -D warnings

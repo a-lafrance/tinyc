@@ -131,7 +131,7 @@ impl<W: Write> IrWriter for TextWriter<W> {
 impl<W: Write> IrVisitor for TextWriter<W> {
     fn visit_instr(&mut self, instr: &Instruction) {
         if self.1.is_ok() {
-            self.1 = writeln!(self.0, "  {}", instr);
+            self.1 = writeln!(self.0, "    {}", instr);
         }
     }
 }
