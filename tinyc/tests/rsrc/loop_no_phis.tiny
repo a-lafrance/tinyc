@@ -1,0 +1,9 @@
+main
+
+{
+    while 0 == 0
+    do
+        call OutputNum(0);
+        call OutputNewLine();
+    od;
+}.

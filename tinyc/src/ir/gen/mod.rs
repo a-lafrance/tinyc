@@ -441,14 +441,6 @@ impl AstVisitor for IrBodyGenerator {
         }
     }
 
-    // test cases:
-        // sanity check
-            // with phis
-            // no phis
-        // complex body
-            // if statement
-            // loop
-            // deeper nesting?
     fn visit_loop(&mut self, loop_stmt: &Loop) {
         let prev_bb = self.current_block.expect("invariant violated: loop must be in block");
         let start_bb = self.make_basic_block_from(prev_bb, prev_bb);
@@ -470,8 +462,9 @@ impl AstVisitor for IrBodyGenerator {
 
         let body_bb = self.fill_basic_block_from(start_bb, start_bb);
         self.visit_block(&loop_stmt.body);
+        let body_end_bb = self.current_block.expect("invariant violated: expected block");
 
-        self.body.connect_via_branch(body_bb, start_bb);
+        self.body.connect_via_branch(body_end_bb, start_bb);
         let post_bb = self.make_basic_block_from(start_bb, start_bb);
 
         self.current_block = Some(start_bb);
@@ -479,7 +472,7 @@ impl AstVisitor for IrBodyGenerator {
         for (var, mut phi) in phis.into_iter() {
             match phi {
                 Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, _, ref mut src2, _) => *src2 = self.body
-                    .val_in_bb(body_bb, &var)
+                    .val_in_bb(body_end_bb, &var)
                     .expect("invariant violated: val not found for var in phi instruction"),
                 _ => unreachable!(),
             }
@@ -1549,7 +1542,7 @@ mod tests {
         ]);
     }
 
-    // ACTUALLY TURN THESE INTO E2E TESTS
+    // TODO: ACTUALLY TURN THESE INTO E2E TESTS
     // as a rule of thumb, if it requires generating IR from a whole program, turn it into an e2e test
 
     #[test]

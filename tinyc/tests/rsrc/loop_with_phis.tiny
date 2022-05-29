@@ -1,0 +1,13 @@
+main
+var a;
+
+{
+    let a <- call InputNum();
+
+    while a > 0
+    do
+        call OutputNum(a);
+        call OutputNewLine();
+        let a <- a - 1;
+    od;
+}.

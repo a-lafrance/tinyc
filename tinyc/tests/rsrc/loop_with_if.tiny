@@ -1,0 +1,23 @@
+main
+var n, target;
+
+{
+    let target <- call InputNum();
+    let n <- call InputNum();
+
+    while n != target
+    do
+        call OutputNum(n);
+        call OutputNewLine();
+
+        if n > target
+        then
+            let n <- n - 1;
+        else
+            let n <- n + 1;
+        fi;
+    od;
+
+    call OutputNum(target);
+    call OutputNewLine();
+}.

@@ -42,6 +42,7 @@ Roadmap for goals to accomplish this quarter:
   - [ ] IR visitor
   - [ ] Register allocation
   - [ ] Codegen
+    - [ ] Recursion is a big edge case
   - [ ] End to end
     - [ ] Full pipeline tests (build and run DLX binary)
     - [ ] IR generation tests (verify IR for actual programs)
