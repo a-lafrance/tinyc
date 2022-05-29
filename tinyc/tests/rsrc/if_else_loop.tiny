@@ -1,5 +1,5 @@
 main
-var a;
+var a, b;
 
 {
     let a <- call InputNum();

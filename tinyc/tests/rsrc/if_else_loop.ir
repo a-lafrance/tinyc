@@ -1,0 +1,32 @@
+@main:
+BB7:
+    $1 = const 0
+    $4 = const 1
+
+BB0:
+    $0 = read
+    $2 = cmp $0, $1
+    bgt $2, BB3
+
+BB1:
+    write $1
+    br BB2
+
+BB3:
+
+BB4:
+    $3 = phi $1, $5
+    $6 = cmp $3, $0
+    bge $6, BB6
+
+BB5:
+    $5 = add $3, $4
+    write $5
+    br BB4
+
+BB6:
+    nop
+
+BB2:
+    writeln
+    end
