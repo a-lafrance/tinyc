@@ -19,3 +19,6 @@ file-bug CONTENT:
 
 check:
     cargo clippy --no-deps -- -D warnings
+
+consume BRANCH:
+    git checkout master && git pull origin master && git branch -D {{ BRANCH }}
