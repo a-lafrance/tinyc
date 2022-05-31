@@ -97,3 +97,227 @@ pub fn walk_instr(v: &mut impl IrVisitor, instr: &Instruction) {
         Instruction::UnconditionalBranch(dest) => v.visit_unconditional_branch_instr(*dest),
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct VisitChecker {
+        tape: String,
+    }
+
+    impl VisitChecker {
+        pub fn new() -> VisitChecker {
+            VisitChecker { tape: String::new() }
+        }
+
+        pub fn push(&mut self, marker: char) {
+            self.tape.push(marker);
+        }
+
+        pub fn push_str(&mut self, marker: &str) {
+            self.tape.push_str(marker);
+        }
+
+        pub fn tape(&self) -> &str {
+            &self.tape
+        }
+    }
+
+    impl IrVisitor for VisitChecker {
+        fn visit_body(&mut self, body: &Body) {
+            self.push('b');
+            walk_body(self, body);
+        }
+
+        fn visit_basic_block(&mut self, _: BasicBlock, bb_data: &BasicBlockData) {
+            self.push_str("bk");
+            walk_basic_block(self, bb_data);
+        }
+
+        fn visit_instr(&mut self, instr: &Instruction) {
+            self.push('i');
+            walk_instr(self, instr);
+        }
+
+        fn visit_bind_instr(&mut self, _: Value, _: CCLocation) {
+            self.push_str("bn");
+        }
+
+        fn visit_branch_instr(&mut self, opcode: BranchOpcode, _: Value, _: BasicBlock) {
+            match opcode {
+                BranchOpcode::Beq => self.push_str("=="),
+                BranchOpcode::Bne => self.push_str("!="),
+                BranchOpcode::Bgt => self.push_str(">"),
+                BranchOpcode::Bge => self.push_str(">="),
+                BranchOpcode::Blt => self.push_str("<"),
+                BranchOpcode::Ble => self.push_str("<="),
+            }
+        }
+
+        fn visit_call_instr(&mut self, _: &str) {
+            self.push('c');
+        }
+
+        fn visit_const_instr(&mut self, _: u32, _: Value) {
+            self.push_str("cv");
+        }
+
+        fn visit_end_instr(&mut self) {
+            self.push('e');
+        }
+
+        fn visit_move_instr(&mut self, _: Value, _: CCLocation) {
+            self.push_str("mv");
+        }
+
+        fn visit_nop_instr(&mut self) {
+            self.push('n');
+        }
+
+        fn visit_read_instr(&mut self, _: Value) {
+            self.push('r');
+        }
+
+        fn visit_return_instr(&mut self) {
+            self.push_str("rt");
+        }
+
+        fn visit_stored_binop_instr(&mut self, opcode: StoredBinaryOpcode, _: Value, _: Value, _: Value) {
+            match opcode {
+                StoredBinaryOpcode::Add => self.push('a'),
+                StoredBinaryOpcode::Sub => self.push('s'),
+                StoredBinaryOpcode::Mul => self.push('m'),
+                StoredBinaryOpcode::Div => self.push('d'),
+                StoredBinaryOpcode::Cmp => self.push_str("co" /* -mpare */),
+                StoredBinaryOpcode::Phi => self.push('p'),
+            }
+        }
+
+        fn visit_unconditional_branch_instr(&mut self, _: BasicBlock) {
+            self.push('u');
+        }
+
+        fn visit_write_instr(&mut self, _src: Value) {
+            self.push('w');
+        }
+
+        fn visit_writeln_instr(&mut self) {
+            self.push_str("wl");
+        }
+    }
+
+    #[test]
+    fn walk_body_sanity_check() {
+        /*
+            BB0:
+                $0 = read
+                $1 = read
+                $2 = cmp $0, $1
+                ble $2, BB2
+
+            BB1:
+                write $0
+                br BB3
+
+            BB2:
+                write $1
+
+            BB3:
+                writeln
+                end
+        */
+
+        let mut v = VisitChecker::new();
+        v.visit_body(&Body::from(
+            vec![
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Read(Value(0)),
+                        Instruction::Read(Value(1)),
+                        Instruction::StoredBinaryOp(StoredBinaryOpcode::Cmp, Value(0), Value(1), Value(2)),
+                        Instruction::Branch(BranchOpcode::Ble, Value(2), BasicBlock(2)),
+                    ],
+                    ControlFlowEdge::IfStmt(BasicBlock(1), Some(BasicBlock(2)), BasicBlock(3)),
+                    None,
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Write(Value(0)),
+                        Instruction::UnconditionalBranch(BasicBlock(3)),
+                    ],
+                    ControlFlowEdge::Branch(BasicBlock(3)),
+                    None,
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Write(Value(1)),
+                    ],
+                    ControlFlowEdge::Fallthrough(BasicBlock(3)),
+                    None,
+                    HashMap::new(),
+                ),
+                BasicBlockData::with(
+                    vec![
+                        Instruction::Writeln,
+                        Instruction::End,
+                    ],
+                    ControlFlowEdge::Leaf,
+                    None,
+                    HashMap::new(),
+                ),
+            ],
+            Some(BasicBlock(0)),
+        ));
+
+        assert_eq!(v.tape(), "bbkiriricoi<=bkiwiubkiwbkiwlie");
+    }
+
+    #[test]
+    fn walk_basic_block_sanity_check() {
+        let mut v = VisitChecker::new();
+        v.visit_basic_block(BasicBlock(0), &BasicBlockData::with(
+            vec![
+                Instruction::Read(Value(0)),
+                Instruction::Write(Value(0)),
+                Instruction::Writeln,
+                Instruction::End,
+            ],
+            ControlFlowEdge::Leaf,
+            None,
+            HashMap::new(),
+        ));
+
+        assert_eq!(v.tape(), "bkiriwiwlie");
+    }
+
+    #[test]
+    fn walk_instr_sanity_check() {
+        let mut v = VisitChecker::new();
+        let instrs = [
+            Instruction::Bind(Value(0), CCLocation::RetVal),
+            Instruction::Branch(BranchOpcode::Beq, Value(0), BasicBlock(0)),
+            Instruction::Call("function".to_string()),
+            Instruction::Const(0, Value(0)),
+            Instruction::End,
+            Instruction::Move(Value(0), CCLocation::RetVal),
+            Instruction::Nop,
+            Instruction::Read(Value(0)),
+            Instruction::Return,
+            Instruction::StoredBinaryOp(StoredBinaryOpcode::Phi, Value(0), Value(0), Value(0)),
+            Instruction::UnconditionalBranch(BasicBlock(0)),
+            Instruction::Write(Value(0)),
+            Instruction::Writeln,
+        ];
+
+        for i in instrs.into_iter() {
+            v.visit_instr(&i);
+        }
+
+        assert_eq!(v.tape(), "ibni==icicvieimvinirirtipiuiwiwl");
+    }
+}
