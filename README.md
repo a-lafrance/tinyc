@@ -39,7 +39,7 @@ Roadmap for goals to accomplish this quarter:
   - [ ] IR formatting
     - [ ] Text
     - [ ] Graph
-  - [ ] IR visitor
+  - [x] IR visitor
   - [ ] Register allocation
   - [ ] Codegen
     - [ ] Recursion is a big edge case
@@ -70,7 +70,7 @@ Roadmap for goals to accomplish this quarter:
         * `ir` dumps IR as text
         * `cfg` (or `ir-cfg`) dumps IR as graph
         * `asm` dumps assembly as text (_must_ appear with `--arch` for codegen)
-- [ ] Even more optimizations
+- [x] Even more optimizations
   - [x] Compile time evaluation of constant comparisons/branching
 - [ ] Migrate to `flexstr` wherever possible because it'll likely be much more efficient
 - [ ] Additional language features
