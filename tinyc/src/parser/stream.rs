@@ -74,7 +74,7 @@ impl<T: Iterator<Item = TokenResult>> TokenStream<T> {
         }
     }
 
-    pub fn try_consume_number(&mut self) -> ParseResult<Option<u32>> {
+    pub fn try_consume_number(&mut self) -> ParseResult<Option<i32>> {
         match self.current {
             Some(Token::Number(n)) => {
                 self.advance()?;

@@ -1,0 +1,9 @@
+@main:
+BB1:
+    $1 = const 0
+    $0 = const 1
+
+BB0:
+    write $0
+    writeln
+    end

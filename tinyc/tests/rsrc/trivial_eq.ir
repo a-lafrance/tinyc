@@ -1,0 +1,13 @@
+@main:
+BB0:
+    $0 = read
+    $1 = cmp $0, $0
+    bne $1, BB2
+
+BB1:
+    write $0
+    writeln
+
+BB2:
+    nop
+    end

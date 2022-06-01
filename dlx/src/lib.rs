@@ -11,10 +11,18 @@ use std::{
 };
 use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, InstrDecodeError, Register};
 
-const MEM_SIZE: usize = 256;
+const MEM_SIZE: usize = 1024;
+
+// TODO:
+    // treat R30 as global data pointer
+    // jump offset is a byte address ??
+        // branch offset is in words ??
+        // is this what i'm doing ??
+        // i'm pretty sure i'm just treating the pc as a word-unit value, so i guess i have to change that ??
+            // whenever you fetch the pc, require that it's divisible by 4 otherwise panic ("pc not aligned")
 
 pub struct Emulator<Stdin: Read, Stdout: Write> {
-    registers: [u32; Register::N_REGS],
+    registers: [i32; Register::N_REGS],
     instr_mem: Vec<Instruction>,
     data_mem: [u8; MEM_SIZE],
     pc: usize,
@@ -53,7 +61,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             quiet,
         };
 
-        let stack_start = e.data_mem.len() as u32 - 1;
+        let stack_start = e.data_mem.len() as i32 - 1;
         e.store_reg(Register::RSP, stack_start);
         e.store_reg(Register::RFP, stack_start);
 
@@ -82,76 +90,140 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     fn exec_current_instr(&mut self) -> ControlFlow {
         match self.fetch_instr() {
             Instruction::F1(F1Opcode::Addi, dest, src, imm) => {
-                let result = (self.load_reg(src) as i64 + imm as i64) as u32;
+                let result = self.load_reg(src).wrapping_add(imm as i32);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Subi, dest, src, imm) => {
-                let result = (self.load_reg(src) as i64 - imm as i64) as u32;
+                let result = self.load_reg(src).wrapping_sub(imm as i32);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Muli, dest, src, imm) => {
-                let result = (self.load_reg(src) as i64 * imm as i64) as u32;
+                let result = self.load_reg(src).wrapping_mul(imm as i32);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Divi, dest, src, imm) => {
-                let result = (self.load_reg(src) as i64 / imm as i64) as u32;
+                let result = self.load_reg(src).wrapping_div(imm as i32);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Modi, dest, src, imm) => {
+                let result = self.load_reg(src) % (imm as i32);
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Cmpi, dest, src, imm) => {
-                let src = self.load_reg(src) as i64;
-                let result = match src.cmp(&(imm as i64)) {
-                    Ordering::Equal => 0,
-                    Ordering::Less => 1,
-                    Ordering::Greater => 2,
+                let result = match self.load_reg(src).cmp(&(imm as i32)) {
+                    Ordering::Equal => -1,
+                    Ordering::Less => 0,
+                    Ordering::Greater => 1,
                 };
                 self.store_reg(dest, result);
 
                 ControlFlow::Continue
             }
 
+            Instruction::F1(F1Opcode::Ori, dest, src, imm) => {
+                let result = self.load_reg(src) | (imm as i32);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Andi, dest, src, imm) => {
+                let result = self.load_reg(src) & (imm as i32);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Bici, dest, src, imm) => {
+                let result = self.load_reg(src) & !(imm as i32);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Xori, dest, src, imm) => {
+                let result = self.load_reg(src) ^ (imm as i32);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Lshi, dest, src, imm) => {
+                let result = if imm > 0 {
+                    (self.load_reg(src) as u32) << (imm as u32)
+                } else {
+                    (self.load_reg(src) as u32) >> (-imm as u32)
+                };
+                self.store_reg(dest, result as i32);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Ashi, dest, src, imm) => {
+                let result = if imm > 0 {
+                    self.load_reg(src) << (imm as i32)
+                } else {
+                    self.load_reg(src) >> (-imm as i32)
+                };
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F1(F1Opcode::Chki, src, _, imm) => {
+                let src = self.load_reg(src);
+
+                if src < 0 || src >= (imm as i32) {
+                    ControlFlow::Quit
+                } else {
+                    ControlFlow::Continue
+                }
+            }
+
             Instruction::F1(F1Opcode::Ldw, dest, base, offset) => {
-                let addr = (self.load_reg(base) as i32) + (offset as i32);
-                self.load_mem_into_reg(addr as u32, dest);
+                let addr = self.load_reg(base) + (offset as i32);
+                self.load_mem_into_reg((addr as u32) as usize, dest);
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Pop, dest, sp, size) => {
-                // load from sp into dest
-                // inc sp by size
-                self.load_mem_into_reg(self.load_reg(sp), dest);
+                self.load_mem_into_reg((self.load_reg(sp) as u32) as usize, dest);
                 self.update_sp(sp, size);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Stw, src, base, offset) => {
-                let addr = (self.load_reg(base) as i32) + (offset as i32);
-                self.store_mem_from_reg(addr as u32, src);
+                let addr = self.load_reg(base) + (offset as i32);
+                self.store_mem_from_reg((addr as u32) as usize, src);
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Psh, src, sp, size) => {
                 self.update_sp(sp, size);
-                self.store_mem_from_reg(self.load_reg(sp), src);
+                self.store_mem_from_reg((self.load_reg(sp) as u32) as usize, src);
 
                 ControlFlow::Continue
             }
 
             Instruction::F1(F1Opcode::Beq, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) == 0 {
-                    ControlFlow::Branch(offset)
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
@@ -159,42 +231,47 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 
             Instruction::F1(F1Opcode::Bne, cmp_reg, _, offset) => {
                 if self.load_reg(cmp_reg) != 0 {
-                    ControlFlow::Branch(offset)
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
             }
 
             Instruction::F1(F1Opcode::Ble, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) <= 1 {
-                    ControlFlow::Branch(offset)
+                if self.load_reg(cmp_reg) <= 0 {
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
             }
 
             Instruction::F1(F1Opcode::Bgt, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) > 1 {
-                    ControlFlow::Branch(offset)
+                if self.load_reg(cmp_reg) > 0 {
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
             }
 
             Instruction::F1(F1Opcode::Blt, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) == 1 {
-                    ControlFlow::Branch(offset)
+                if self.load_reg(cmp_reg) < 0 {
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
             }
 
             Instruction::F1(F1Opcode::Bge, cmp_reg, _, offset) => {
-                if self.load_reg(cmp_reg) != 1 {
-                    ControlFlow::Branch(offset)
+                if self.load_reg(cmp_reg) >= 0 {
+                    ControlFlow::Branch(offset as isize)
                 } else {
                     ControlFlow::Continue
                 }
+            }
+
+            Instruction::F1(F1Opcode::Bsr, _, _, offset) => {
+                self.save_jump_dest();
+                ControlFlow::Branch(offset as isize)
             }
 
             Instruction::F1(F1Opcode::Wrl, _, _, _) => {
@@ -230,15 +307,99 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 ControlFlow::Continue
             }
 
+            Instruction::F2(F2Opcode::Mod, dest, src, amt) => {
+                let result = self.load_reg(src) % self.load_reg(amt);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
             Instruction::F2(F2Opcode::Cmp, dest, lhs, rhs) => {
                 let lhs = self.load_reg(lhs);
                 let rhs = self.load_reg(rhs);
                 let result = match lhs.cmp(&rhs) {
                     Ordering::Equal => 0,
-                    Ordering::Less => 1,
-                    Ordering::Greater => 2,
+                    Ordering::Less => -1,
+                    Ordering::Greater => 1,
                 };
                 self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Or, dest, lhs, rhs) => {
+                let result = self.load_reg(lhs) | self.load_reg(rhs);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::And, dest, lhs, rhs) => {
+                let result = self.load_reg(lhs) & self.load_reg(rhs);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Bic, dest, lhs, rhs) => {
+                let result = self.load_reg(lhs) & !self.load_reg(rhs);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Xor, dest, lhs, rhs) => {
+                let result = self.load_reg(lhs) ^ self.load_reg(rhs);
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Lsh, dest, src, amt) => {
+                let amt = self.load_reg(amt);
+                let result = if amt > 0 {
+                    (self.load_reg(src) as u32) << (amt as u32)
+                } else {
+                    (self.load_reg(src) as u32) >> (-amt as u32)
+                };
+                self.store_reg(dest, result as i32);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Ash, dest, src, amt) => {
+                let amt = self.load_reg(amt);
+                let result = if amt > 0 {
+                    self.load_reg(src) << amt
+                } else {
+                    self.load_reg(src) >> -amt
+                };
+                self.store_reg(dest, result);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Chk, src, _, offset) => {
+                let src = self.load_reg(src);
+                let offset = self.load_reg(offset);
+
+                if src < 0 || src >= offset {
+                    ControlFlow::Quit
+                } else {
+                    ControlFlow::Continue
+                }
+            }
+
+            Instruction::F2(F2Opcode::Ldx, dest, base, offset) => {
+                let addr = self.load_reg(base) + self.load_reg(offset);
+                self.load_mem_into_reg((addr as u32) as usize, dest);
+
+                ControlFlow::Continue
+            }
+
+            Instruction::F2(F2Opcode::Stx, src, base, offset) => {
+                let addr = self.load_reg(base) + self.load_reg(offset);
+                self.store_mem_from_reg((addr as u32) as usize, src);
 
                 ControlFlow::Continue
             }
@@ -260,8 +421,13 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
                 ControlFlow::Continue
             }
 
+            Instruction::F2(F2Opcode::Wrh, _, src, _) => {
+                self.write_hex_from(src);
+                ControlFlow::Continue
+            }
+
             Instruction::F3(F3Opcode::Jsr, dest) => {
-                self.store_reg(Register::RRET, self.pc as u32);
+                self.save_jump_dest();
                 ControlFlow::Jump(dest as usize)
             }
         }
@@ -271,39 +437,40 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         self.instr_mem[self.pc]
     }
 
-    fn load_reg(&self, r: Register) -> u32 {
+    fn load_reg(&self, r: Register) -> i32 {
         self.registers[r.0 as usize]
     }
 
-    fn store_reg(&mut self, r: Register, val: u32) {
+    fn store_reg(&mut self, r: Register, val: i32) {
         if r.0 > 0 {
             self.registers[r.0 as usize] = val;
         }
     }
 
-    fn load_mem(&self, addr: u32) -> u32 {
-        let addr = addr as usize;
-        u32::from_be_bytes(self.data_mem[addr..addr + 4].try_into().unwrap())
+    fn load_mem(&self, addr: usize) -> i32 {
+        i32::from_be_bytes(self.data_mem[addr..addr + 4].try_into().unwrap())
     }
 
-    fn store_mem(&mut self, addr: u32, val: u32) {
-        let addr = addr as usize;
+    fn store_mem(&mut self, addr: usize, val: i32) {
         self.data_mem[addr..addr + 4].copy_from_slice(&val.to_be_bytes());
     }
 
-    fn load_mem_into_reg(&mut self, addr: u32, dest: Register) {
+    fn load_mem_into_reg(&mut self, addr: usize, dest: Register) {
         let data = self.load_mem(addr);
         self.store_reg(dest, data);
     }
 
-    fn store_mem_from_reg(&mut self, addr: u32, src: Register) {
+    fn store_mem_from_reg(&mut self, addr: usize, src: Register) {
         self.store_mem(addr, self.load_reg(src));
     }
 
     fn update_sp(&mut self, sp: Register, offset: i16) {
-        let current_sp = self.load_reg(sp);
-        let new_sp = (current_sp as i32) + (offset as i32);
-        self.store_reg(sp, new_sp as u32);
+        let new_sp = self.load_reg(sp) + (offset as i32);
+        self.store_reg(sp, new_sp);
+    }
+
+    fn save_jump_dest(&mut self) {
+        self.store_reg(Register::RRET, (self.pc as u32) as i32 + 1);
     }
 
     fn read_to(&mut self, r: Register) {
@@ -315,12 +482,16 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
         let mut buf = String::new();
         self.stdin.read_line(&mut buf).expect("failed to read integer");
 
-        let val = buf.trim().parse::<u32>().expect("invalid input");
+        let val = buf.trim().parse::<i32>().expect("invalid input");
         self.store_reg(r, val);
     }
 
     fn write_from(&mut self, r: Register) {
         write!(self.stdout, "{}", self.load_reg(r)).expect("failed to write integer");
+    }
+
+    fn write_hex_from(&mut self, r: Register) {
+        write!(self.stdout, "0x{:x}", self.load_reg(r)).expect("failed to write integer as hex");
     }
 
     fn writeln(&mut self) {
@@ -331,7 +502,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ControlFlow {
     Continue,
-    Branch(i16),
+    Branch(isize),
     Jump(usize),
     Quit,
 }

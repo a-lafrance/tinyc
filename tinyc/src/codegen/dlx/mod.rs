@@ -314,7 +314,7 @@ impl<'b> DlxCodegen<'b> {
             let dest_addr = self.label_for_body(&call.dest).expect("missing label for body");
 
             match self.buffer[call.ip] {
-                Instruction::F3(F3Opcode::Jsr, ref mut dest) => *dest = dest_addr,
+                Instruction::F3(F3Opcode::Jsr, ref mut dest) => *dest = dest_addr as i32,
                 _ => unreachable!(),
             }
         }
@@ -352,11 +352,11 @@ impl<'b> DlxCodegen<'b> {
         }
     }
 
-    fn mark_const(&mut self, val: Value, const_val: u32) {
+    fn mark_const(&mut self, val: Value, const_val: i32) {
         self.current_context.known_consts.insert(val, const_val);
     }
 
-    fn const_for_val(&self, val: Value) -> Option<u32> {
+    fn const_for_val(&self, val: Value) -> Option<i32> {
         self.current_context.known_consts.get(&val).copied()
     }
 
@@ -452,7 +452,7 @@ impl IrVisitor for DlxCodegen<'_> {
         // TODO: pop saved registers
     }
 
-    fn visit_const_instr(&mut self, const_val: u32, dest: Value) {
+    fn visit_const_instr(&mut self, const_val: i32, dest: Value) {
         do_with_store!(self, dest => dest_reg, {
             self.mark_const(dest, const_val);
             self.emit_instr(Instruction::F1(F1Opcode::Addi, dest_reg, Register::R0, const_val as i16));
@@ -553,7 +553,7 @@ struct BodyContext<'b> {
     pub loc_table: LocationTable<Register>,
     pub labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
     pub reg_live_set: HashSet<Register>,
-    pub known_consts: HashMap<Value, u32>,
+    pub known_consts: HashMap<Value, i32>,
 }
 
 impl<'b> BodyContext<'b> {

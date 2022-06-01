@@ -134,7 +134,7 @@ impl<'a> Cursor<'a> {
 
         if found_digit {
             // check if you hit a letter
-            let tok = Ok(Token::Number(n));
+            let tok = Ok(Token::Number(n as i32));
             let res = if let Some(end) = self.peek() {
                 if end.is_ascii_lowercase() {
                     Err(InvalidCharError(end))

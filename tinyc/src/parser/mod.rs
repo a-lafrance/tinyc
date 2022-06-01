@@ -117,7 +117,7 @@ impl<T: Iterator<Item = TokenResult>> Parser<T> {
             self.stream.try_consume_matching_punctuation(')')
                 .map(|_| Factor::SubExpr(subexpr))
         } else if let Some(n) = self.stream.try_consume_number()? {
-            Ok(Factor::Number(n))
+            Ok(Factor::Number(n as i32))
         } else {
             match self.stream.try_peek_keyword() {
                 Some(Keyword::Call) => Ok(Factor::Call(self.parse_func_call(FuncCallContext::Expr)?)),
