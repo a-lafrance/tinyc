@@ -4,6 +4,8 @@
 // it would really be nice if we could stick e2e in the name of the e2e test functions somehow
 // currently we're relying on this weird module hack to get it in the path name
 
+// TODO: test recursion
+
 mod e2e {
     use crate::*;
 
