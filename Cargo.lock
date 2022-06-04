@@ -84,18 +84,18 @@ dependencies = [
 
 [[package]]
 name = "discrim"
-version = "0.0.2"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0db0f4af7c48847bbde8570e7208710ddd2d568397c4429b2d0f93335ad0a77"
+checksum = "c1c845f9118cdac9ec16df4bebe2471de008581f0cc3cb3e8ec2bb0ccc8d17c2"
 dependencies = [
  "discrim-codegen",
 ]
 
 [[package]]
 name = "discrim-codegen"
-version = "0.0.2"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa23206c276ebf4dcb7cdadaa04f4683526d0046056985b4c278dd8532e79c3a"
+checksum = "9e405890885617c96de8fdd27f22c637f9a7afe14132a4a607d7734d74e7b3ed"
 dependencies = [
  "quote",
  "syn",
