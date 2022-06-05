@@ -92,6 +92,6 @@ where
             }
         },
 
-        Err(e) => eprintln!("\x1b[31merror\x1b[0m: {}", e),
+        Err(e) => eprintln!("\x1b[91merror\x1b[0m: {}", e),
     };
 }

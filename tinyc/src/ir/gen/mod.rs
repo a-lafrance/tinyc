@@ -112,17 +112,39 @@ impl IrBodyGenerator {
         val
     }
 
-    fn load_var(&mut self, var: &str) {
-        self.last_val = self.current_block.map(|bb| self.body.basic_block_data(bb)).and_then(|bb| bb.get_val(var));
+    fn load_var(&mut self, var: &str) -> Value {
+        let bb = self.current_block.expect("invariant violated: expected basic block");
+        let val = self.body.basic_block_data(bb)
+            .get_val(var)
+            .unwrap_or_else(|| self.assign_default(var, bb));
+
+        self.last_val = Some(val);
+        val
     }
 
-    fn load_const(&mut self, n: u32) {
-        self.last_val = Some(self.const_alloc.val_for_const(n).unwrap_or_else(|| {
+    fn load_const(&mut self, n: u32) -> Value {
+        let const_val = self.const_alloc.val_for_const(n).unwrap_or_else(|| {
             let val = self.alloc_val();
             self.const_alloc.alloc(n, val);
 
             val
-        }));
+        });
+
+        self.last_val = Some(const_val);
+        const_val
+    }
+
+    fn assign_default(&mut self, var: &str, bb: BasicBlock) -> Value {
+        self.emit_uninit_warning(var);
+
+        let default_val = self.load_const(0);
+        self.body.assign_in_bb(bb, var.to_string(), default_val);
+        default_val
+    }
+
+    // NOTE: yes, in a real piece of software this should probably not be defined here
+    fn emit_uninit_warning(&self, var: &str) {
+        eprintln!("\x1b[93mwarning\x1b[0m: use of uninitialized variable '{}'", var);
     }
 
     fn make_basic_block(&mut self) -> BasicBlock {
@@ -289,7 +311,10 @@ impl AstVisitor for IrBodyGenerator {
             let opcode = StoredBinaryOpcode::from(*op);
 
             match self.try_const_compute(opcode, lhs, rhs) {
-                Some(result) => self.load_const(result),
+                Some(result) => {
+                    self.load_const(result);
+                }
+
                 None => {
                     let block = self.current_block.expect("invariant violated: expr must be in block");
                     let cse_index = IndexableInstr::from_term_op(*op, lhs, rhs);
@@ -314,8 +339,14 @@ impl AstVisitor for IrBodyGenerator {
 
     fn visit_factor(&mut self, factor: &Factor) {
         match factor {
-            Factor::VarRef(var) => self.load_var(var),
-            Factor::Number(n) => self.load_const(*n),
+            Factor::VarRef(var) => {
+                self.load_var(var);
+            }
+
+            Factor::Number(n) => {
+                self.load_const(*n);
+            }
+
             f => visit::walk_factor(self, f),
         }
     }
@@ -500,7 +531,10 @@ impl AstVisitor for IrBodyGenerator {
         let rhs = self.last_val.expect("invariant violated: expected expr");
 
         match self.try_const_compute(StoredBinaryOpcode::Cmp, lhs, rhs) {
-            Some(const_result) => self.load_const(const_result),
+            Some(const_result) => {
+                self.load_const(const_result);
+            }
+
             None => {
                 let block = self.current_block.expect("invariant violated: relation must be in block");
                 let cse_index = IndexableInstr::Cmp(lhs, rhs);
@@ -551,7 +585,10 @@ impl AstVisitor for IrBodyGenerator {
             let opcode = StoredBinaryOpcode::from(*op);
 
             match self.try_const_compute(opcode, lhs, rhs) {
-                Some(result) => self.load_const(result),
+                Some(result) => {
+                    self.load_const(result);
+                }
+
                 None => {
                     let block = self.current_block.expect("invariant violated: term must be in block");
                     let cse_index = IndexableInstr::from_factor_op(*op, lhs, rhs);

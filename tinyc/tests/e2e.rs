@@ -31,4 +31,5 @@ mod e2e {
     define_e2e_test!(loop_with_loop);
     define_e2e_test!(loop_with_phis);
     define_e2e_test!(read_and_write);
+    define_e2e_test!(uninit_val);
 }
