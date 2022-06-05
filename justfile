@@ -20,5 +20,5 @@ file-bug CONTENT:
 check:
     cargo clippy --no-deps -- -D warnings
 
-consume BRANCH:
-    git checkout master && git pull origin master && git branch -D {{ BRANCH }}
+ff-master:
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD) git checkout master && git pull origin master && git branch -D $CURRENT_BRANCH
