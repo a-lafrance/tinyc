@@ -125,6 +125,11 @@ End-to-end (e2e) tests were much more interesting to set up. I wanted to mimic h
 ### Stuff I Didn't Get To
 
 I still had more goals for the quarter which I didn't have time for:
+* A robust error system
+    * Error detection is very naive right now, since it basically just propagates "source" errors all the way up the tree, rather than properly describing exactly what happened. For example, if you forget to use the `call` keyword to call functions, you get an error saying you're missing a `}`, which is obviously very bad. Rather than blindly propagating errors, each step of the parser should really detect and adjust the error message to correctly signify what actually happened.
+    * When you detect an error, it's reported very inelegantly, because there's no source-level info about where the error occurred. Ideally even if it's just a line/character number where the error occurred in addition to the message, that would be better than nothing.
+    * There should be better logic for unifying the way warnings and errors are emitted. Even if parsing stops at the first error, there could be multiple warnings to emit too. In fact, in a robust system there might even be support for multiple errors.
+    * Throughout the compiler there are too many naked panics. These should be wrapped in a more well-defined compiler panic mechanism (like the Rustc ICE mechanism).
 * Dumping assembly in addition to IR
     * I probably would've done this by changing the `--dump-ir` flag into a more general `--dump` flag with 3 options:
         1. `--dump ir`: IR as pseudo-assembly
