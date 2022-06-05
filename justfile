@@ -21,4 +21,4 @@ check:
     cargo clippy --no-deps -- -D warnings
 
 ff-master:
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD) git checkout master && git pull origin master && git branch -D $CURRENT_BRANCH
+    export CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD) && git checkout master && git pull origin master && git branch -D $CURRENT_BRANCH
