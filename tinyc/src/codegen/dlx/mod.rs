@@ -17,12 +17,24 @@ use crate::{
 };
 use self::utils::{UnresolvedBranch, UnresolvedCall};
 
-pub fn gen_code<W: Write>(ir: IrStore, mut writer: BufWriter<W>, opt: OptConfig) {
-    let instr_buffer = DlxCodegen::gen_from_ir(ir, opt);
+pub fn gen_code<W: Write>(ir: IrStore, writer: W, opt: OptConfig) {
+    let mut writer = BufWriter::new(writer);
 
-    for instr in instr_buffer.into_iter() {
+    for instr in run_generator(ir, opt).into_iter() {
         writer.write_all(instr.as_bytes().as_ref()).expect("failed to write instr");
     }
+}
+
+pub fn gen_asm<W: Write>(ir: IrStore, writer: W, opt: OptConfig) {
+    let mut writer = BufWriter::new(writer);
+
+    for instr in run_generator(ir, opt).into_iter() {
+        writeln!(writer, "{}", instr).expect("failed to dump asm instr");
+    }
+}
+
+fn run_generator(ir: IrStore, opt: OptConfig) -> Vec<Instruction> {
+    DlxCodegen::gen_from_ir(ir, opt)
 }
 
 // still todo:

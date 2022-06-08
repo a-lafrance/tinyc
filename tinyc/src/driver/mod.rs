@@ -4,7 +4,7 @@ pub(crate) mod opt;
 use std::{
     ffi::OsString,
     fs::File,
-    io::{self, BufWriter, Read},
+    io::{self, Read},
 };
 use clap::Parser as ArgParse;
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
     scanner,
 };
 use self::{
-    dump::{dump_ir, IrDumpFormat},
+    dump::{dump_from_ir, DumpFormat},
     opt::{OptConfig, OptLevel, RegAllocator},
 };
 
@@ -27,8 +27,8 @@ pub(crate) struct Config {
     #[clap(short, long, help = "The output file path")]
     pub output: Option<String>,
 
-    #[clap(long, help = "Emit IR in the specified format")]
-    pub dump_ir: Option<IrDumpFormat>,
+    #[clap(long = "dump", help = "Emit IR in the specified format")]
+    pub dump_fmt: Option<DumpFormat>,
 
     #[clap(short, long, help = "Architecture for which to emit native code")]
     pub arch: Option<SupportedArch>,
@@ -72,23 +72,21 @@ where
         Ok(ast) => {
             let ir = IrStore::from_ast(ast, opt);
 
-            if let Some(dump_fmt) = config.dump_ir {
+            if let Some(dump_fmt) = config.dump_fmt {
                 // FIXME: better error handling when opening outfile
-                let mut outfile = config.output.map(|f| File::create(f).expect("failed to open output file"));
+                let mut outfile = config.output.as_ref()
+                    .map(|f| File::create(f).expect("failed to open output file"));
+
                 let dump_result = match outfile.as_mut() {
-                    Some(outfile) => dump_ir(dump_fmt, outfile, &ir),
-                    None => dump_ir(dump_fmt, &mut io::stdout(), &ir),
+                    Some(outfile) => dump_from_ir(dump_fmt, outfile, ir, config.arch, opt),
+                    None => dump_from_ir(dump_fmt, &mut io::stdout(), ir, config.arch, opt),
                 };
 
-                dump_result.expect("failed to dump IR");
-
-                if config.arch.is_some() {
-                    println!("warning: --arch is ignored when --dump-ir is provided");
-                }
+                dump_result.expect("failed to dump");
             } else if let Some(SupportedArch::Dlx) = config.arch {
                 let outfile = File::create(config.output.unwrap_or_else(|| "a.out".to_string()))
                     .expect("failed to open output file");
-                dlx::gen_code(ir, BufWriter::new(outfile), opt);
+                dlx::gen_code(ir, outfile, opt);
             }
         },
 
