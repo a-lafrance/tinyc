@@ -13,7 +13,7 @@ pub trait IrVisitor: Sized {
     fn visit_bind_instr(&mut self, _val: Value, _loc: CCLocation) { }
     fn visit_branch_instr(&mut self, _opcode: BranchOpcode, _cmp: Value, _dest: BasicBlock) { }
     fn visit_call_instr(&mut self, _func: &str) { }
-    fn visit_const_instr(&mut self, _const_val: u32, _dest: Value) { }
+    fn visit_const_instr(&mut self, _const_val: i32, _dest: Value) { }
     fn visit_end_instr(&mut self) { }
     fn visit_move_instr(&mut self, _val: Value, _loc: CCLocation) { }
     fn visit_nop_instr(&mut self) { }
@@ -161,7 +161,7 @@ mod tests {
             self.push('c');
         }
 
-        fn visit_const_instr(&mut self, _: u32, _: Value) {
+        fn visit_const_instr(&mut self, _: i32, _: Value) {
             self.push_str("cv");
         }
 

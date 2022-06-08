@@ -122,7 +122,7 @@ impl IrBodyGenerator {
         val
     }
 
-    fn load_const(&mut self, n: u32) -> Value {
+    fn load_const(&mut self, n: i32) -> Value {
         let const_val = self.const_alloc.val_for_const(n).unwrap_or_else(|| {
             let val = self.alloc_val();
             self.const_alloc.alloc(n, val);
@@ -217,7 +217,7 @@ impl IrBodyGenerator {
         phis
     }
 
-    fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<u32> {
+    fn try_const_compute(&self, op: StoredBinaryOpcode, v1: Value, v2: Value) -> Option<i32> {
         if self.opt.const_prop {
             // Special case if the values aren't constant, but you're comparing a value to itself
             if let StoredBinaryOpcode::Cmp = op {
@@ -231,7 +231,7 @@ impl IrBodyGenerator {
 
             match op {
                 StoredBinaryOpcode::Add => Some(c1 + c2),
-                StoredBinaryOpcode::Sub => Some(c1 - c2), // BIG FIXME: THIS BREAKS FOR NEGATIVE NUMBERS
+                StoredBinaryOpcode::Sub => Some(c1 - c2),
                 StoredBinaryOpcode::Mul => Some(c1 * c2),
                 StoredBinaryOpcode::Div => Some(c1 / c2),
                 StoredBinaryOpcode::Cmp => Some(self.compute_const_cmp(c1, c2)),
@@ -251,21 +251,21 @@ impl IrBodyGenerator {
             Some(match op {
                 RelOp::Eq => cmp == 0,
                 RelOp::Ne => cmp != 0,
-                RelOp::Gt => cmp == 2,
-                RelOp::Lt => cmp == 1,
-                RelOp::Ge => cmp != 1,
-                RelOp::Le => cmp != 2,
+                RelOp::Gt => cmp > 0,
+                RelOp::Lt => cmp < 0,
+                RelOp::Ge => cmp >= 0,
+                RelOp::Le => cmp <= 0,
             })
         } else {
             None
         }
     }
 
-    fn compute_const_cmp(&self, lhs: u32, rhs: u32) -> u32 {
+    fn compute_const_cmp(&self, lhs: i32, rhs: i32) -> i32 {
         match lhs.cmp(&rhs) {
             Ordering::Equal => 0,
-            Ordering::Less => 1,
-            Ordering::Greater => 2,
+            Ordering::Less => -1,
+            Ordering::Greater => 1,
         }
     }
 }

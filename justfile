@@ -8,7 +8,7 @@ viz BIN *ARGS:
     cargo run -p dlx --features cli --bin viz --quiet -- {{ ARGS }} {{ BIN }}
 
 build SRC *ARGS:
-	cargo run -p tinyc -- {{ ARGS }} {{ SRC }}
+	cargo run -p tinyc --quiet -- {{ ARGS }} {{ SRC }}
 
 e2e SRC BIN *ARGS:
 	just build {{ SRC }} --arch dlx -o {{ BIN }} {{ ARGS }}

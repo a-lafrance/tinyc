@@ -127,7 +127,7 @@ pub enum Instruction {
     Bind(Value, CCLocation),
     Branch(BranchOpcode, Value, BasicBlock),
     Call(String),
-    Const(u32, Value),
+    Const(i32, Value),
     End,
     Move(Value, CCLocation),
     Nop,

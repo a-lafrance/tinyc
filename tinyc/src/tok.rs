@@ -3,7 +3,7 @@ use crate::utils::{Keyword, RelOp};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
-    Number(u32),
+    Number(i32),
     Ident(String),
     Keyword(Keyword),
     RelOp(RelOp),

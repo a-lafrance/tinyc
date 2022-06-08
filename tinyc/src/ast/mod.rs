@@ -30,7 +30,7 @@ pub struct Expr {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Factor {
     VarRef(String),
-    Number(u32),
+    Number(i32),
     SubExpr(Box<Expr>),
     Call(FuncCall),
 }

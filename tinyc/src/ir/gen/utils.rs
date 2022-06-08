@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct ConstAllocator {
-    mapping: BiBTreeMap<u32, Value>,
+    mapping: BiBTreeMap<i32, Value>,
 }
 
 impl ConstAllocator {
@@ -18,15 +18,15 @@ impl ConstAllocator {
         self.mapping.is_empty()
     }
 
-    pub fn val_for_const(&self, n: u32) -> Option<Value> {
+    pub fn val_for_const(&self, n: i32) -> Option<Value> {
         self.mapping.get_by_left(&n).copied()
     }
 
-    pub fn const_for_val(&self, val: Value) -> Option<u32> {
+    pub fn const_for_val(&self, val: Value) -> Option<i32> {
         self.mapping.get_by_right(&val).copied()
     }
 
-    pub fn alloc(&mut self, n: u32, val: Value) {
+    pub fn alloc(&mut self, n: i32, val: Value) {
         self.mapping.insert(n, val);
     }
 
