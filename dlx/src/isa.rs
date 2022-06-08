@@ -13,7 +13,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    const INSTR_LEN: usize = 4;
+    pub const SIZE_IN_BYTES: usize = 4;
 
     const OPCODE_SHIFT: u8 = 26;
     const R1_SHIFT: u8 = 21;
@@ -25,7 +25,7 @@ impl Instruction {
     const F3_IMM_MASK: u32 = 0x03FFFFFF;
 
     pub fn as_bytes(&self) -> Bytes {
-        let mut buf = BytesMut::with_capacity(Instruction::INSTR_LEN);
+        let mut buf = BytesMut::with_capacity(Instruction::SIZE_IN_BYTES);
 
         let instr_bytes = match self {
             Instruction::F1(opcode, r1, r2, imm) => {

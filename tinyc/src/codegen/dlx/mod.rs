@@ -47,9 +47,9 @@ type DlxLocation = Location<Register>;
 struct DlxCodegen<'b> {
     current_context: BodyContext<'b>,
     buffer: Vec<Instruction>,
-    body_labels: HashMap<String, u32>,
+    body_labels: HashMap<String, usize>,
     current_stack_args: Vec<Value>,
-    next_instr_addr: i16, // addr in words of next instr
+    next_instr_addr: usize, // word-aligned addr of next instruction
     unresolved_branches: Vec<UnresolvedBranch>,
     unresolved_calls: Vec<UnresolvedCall>,
     cutoff_point: Option<BasicBlock>,
@@ -107,7 +107,7 @@ impl<'b> DlxCodegen<'b> {
     }
 
     fn insert_body_label(&mut self, name: String) {
-        self.body_labels.insert(name, self.next_instr_addr as u32 /* FIXME: might be unsafe */);
+        self.body_labels.insert(name, self.next_instr_addr as usize);
     }
 
     fn emit_instr(&mut self, instr: Instruction) {
@@ -142,7 +142,12 @@ impl<'b> DlxCodegen<'b> {
         ));
 
         if offset.is_none() {
-            self.mark_unresolved_branch(self.buffer.len() - 1, self.next_instr_addr - 1, dest);
+            // FIXME: don't like that there are magic constants here
+            self.mark_unresolved_branch(
+                self.buffer.len() - 1,
+                self.next_instr_addr - 1,
+                dest,
+            );
         }
     }
 
@@ -244,16 +249,18 @@ impl<'b> DlxCodegen<'b> {
         self.current_context.labels.insert(bb, self.next_instr_addr);
     }
 
-    fn label_for(&self, bb: BasicBlock) -> Option<i16> {
+    fn label_for(&self, bb: BasicBlock) -> Option<usize> {
         self.current_context.labels.get(&bb).copied()
     }
 
-    fn label_for_body(&self, name: &str) -> Option<u32> {
+    fn label_for_body(&self, name: &str) -> Option<usize> {
         self.body_labels.get(name).copied()
     }
 
-    fn branch_offset(&self, src_addr: i16, dest: BasicBlock) -> Option<i16> {
-        self.label_for(dest).map(|l| l - src_addr)
+    fn branch_offset(&self, src_addr: usize, dest: BasicBlock) -> Option<i16> {
+        self.label_for(dest)
+            .map(|l| l - src_addr)
+            .map(|o| dlx::utils::word_to_byte_addr(o) as i16)
     }
 
     fn loc_for_val(&self, val: Value) -> Option<DlxLocation> {
@@ -285,7 +292,7 @@ impl<'b> DlxCodegen<'b> {
         self.current_context.reg_live_set.insert(reg);
     }
 
-    fn mark_unresolved_branch(&mut self, ip: usize, addr: i16, dest: BasicBlock) {
+    fn mark_unresolved_branch(&mut self, ip: usize, addr: usize, dest: BasicBlock) {
         self.unresolved_branches.push(UnresolvedBranch { ip, addr, dest });
     }
 
@@ -311,7 +318,8 @@ impl<'b> DlxCodegen<'b> {
 
     fn resolve_calls(&mut self) {
         for call in self.unresolved_calls.iter() {
-            let dest_addr = self.label_for_body(&call.dest).expect("missing label for body");
+            let dest_index = self.label_for_body(&call.dest).expect("missing label for body");
+            let dest_addr = dlx::utils::word_to_byte_addr(dest_index);
 
             match self.buffer[call.ip] {
                 Instruction::F3(F3Opcode::Jsr, ref mut dest) => *dest = dest_addr as i32,
@@ -551,7 +559,7 @@ impl IrVisitor for DlxCodegen<'_> {
 struct BodyContext<'b> {
     pub body: &'b Body,
     pub loc_table: LocationTable<Register>,
-    pub labels: HashMap<BasicBlock, i16>, // labels bb number to addr of first instruction
+    pub labels: HashMap<BasicBlock, usize>, // labels bb number to addr of first instruction
     pub reg_live_set: HashSet<Register>,
     pub known_consts: HashMap<Value, i32>,
 }

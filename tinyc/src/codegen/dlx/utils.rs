@@ -23,7 +23,7 @@ macro_rules! do_with_store {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnresolvedBranch {
     pub ip: usize,
-    pub addr: i16,
+    pub addr: usize,
     pub dest: BasicBlock,
 }
 

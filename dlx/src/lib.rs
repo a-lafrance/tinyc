@@ -61,7 +61,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             quiet,
         };
 
-        let stack_start = e.data_mem.len() as i32 - 1;
+        let stack_start = utils::word_to_byte_addr(e.data_mem.len() - 1) as i32;
         e.store_reg(Register::RSP, stack_start);
         e.store_reg(Register::RFP, stack_start);
 
@@ -72,7 +72,7 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     pub fn start(&mut self) {
         loop {
             match self.exec_current_instr() {
-                ControlFlow::Continue => self.pc += 1,
+                ControlFlow::Continue => self.pc += Instruction::SIZE_IN_BYTES,
                 ControlFlow::Quit => break,
 
                 ControlFlow::Branch(offset) => {
@@ -434,7 +434,8 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
     }
 
     fn fetch_instr(&mut self) -> Instruction {
-        self.instr_mem[self.pc]
+        let pc_index = utils::byte_to_word_addr(self.pc).expect("pc not word-aligned");
+        self.instr_mem[pc_index]
     }
 
     fn load_reg(&self, r: Register) -> i32 {
