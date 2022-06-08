@@ -83,15 +83,15 @@ pub fn run_e2e_test(
     ir_file_path.set_extension("ir");
 
     if ir_file_path.exists() {
-        // tinyc --dump-ir=text -o <prefix>
+        // tinyc --dump=ir -o <prefix>
         // dump ir & examine
         let mut test_ir_file_path = test_tmp_dir.clone();
         test_ir_file_path.push("test.ir");
 
         let mut args = vec![
             OsStr::new("tinyc"),
-            OsStr::new("--dump-ir"),
-            OsStr::new("text"),
+            OsStr::new("--dump"),
+            OsStr::new("ir"),
             OsStr::new("-o"),
             test_ir_file_path.as_os_str(),
             src_file_path.as_os_str(),
@@ -113,6 +113,44 @@ pub fn run_e2e_test(
         exp_ir_file.read_to_string(&mut exp_ir_dump).unwrap();
 
         assert_eq!(test_ir_dump.trim(), exp_ir_dump.trim());
+    }
+
+    let mut asm_file_path = test_path.clone();
+    asm_file_path.set_extension("asm");
+
+    if asm_file_path.exists() {
+        // tinyc --dump=ir -o <prefix>
+        // dump ir & examine
+        let mut test_asm_file_path = test_tmp_dir.clone();
+        test_asm_file_path.push("test.asm");
+
+        let mut args = vec![
+            OsStr::new("tinyc"),
+            OsStr::new("--dump"),
+            OsStr::new("asm"),
+            OsStr::new("--arch"),
+            OsStr::new("dlx"),
+            OsStr::new("-o"),
+            test_asm_file_path.as_os_str(),
+            src_file_path.as_os_str(),
+        ];
+
+        if let Some(ref opt_args) = opt_args {
+            args.extend(opt_args.iter());
+        }
+
+        // TODO: exit status from compiler
+        driver::start(args.into_iter());
+
+        let mut test_asm_file = File::open(&test_asm_file_path).unwrap();
+        let mut test_asm_dump = String::new();
+        test_asm_file.read_to_string(&mut test_asm_dump).unwrap();
+
+        let mut exp_asm_file = File::open(&asm_file_path).unwrap();
+        let mut exp_asm_dump = String::new();
+        exp_asm_file.read_to_string(&mut exp_asm_dump).unwrap();
+
+        assert_eq!(test_asm_dump.trim(), exp_asm_dump.trim());
     }
 
     fs::remove_dir_all(&test_tmp_dir).unwrap();
