@@ -122,7 +122,7 @@ impl IrBodyGenerator {
         val
     }
 
-    fn load_const(&mut self, n: u32) -> Value {
+    fn load_const(&mut self, n: i32) -> Value {
         let const_val = self.const_alloc.val_for_const(n).unwrap_or_else(|| {
             let val = self.alloc_val();
             self.const_alloc.alloc(n, val);
