@@ -12,14 +12,7 @@ use std::{
 use self::isa::{F1Opcode, F2Opcode, F3Opcode, Instruction, InstrDecodeError, Register};
 
 const MEM_SIZE: usize = 1024;
-
-// TODO:
-    // treat R30 as global data pointer
-    // jump offset is a byte address ??
-        // branch offset is in words ??
-        // is this what i'm doing ??
-        // i'm pretty sure i'm just treating the pc as a word-unit value, so i guess i have to change that ??
-            // whenever you fetch the pc, require that it's divisible by 4 otherwise panic ("pc not aligned")
+const GLOBAL_DATA_BYTES: usize = 128;
 
 pub struct Emulator<Stdin: Read, Stdout: Write> {
     registers: [i32; Register::N_REGS],
@@ -61,9 +54,12 @@ impl<Stdin: Read, Stdout: Write> Emulator<Stdin, Stdout> {
             quiet,
         };
 
-        let stack_start = utils::word_to_byte_addr(e.data_mem.len() - 1) as i32;
-        e.store_reg(Register::RSP, stack_start);
-        e.store_reg(Register::RFP, stack_start);
+        let base_addr = utils::word_to_byte_addr(e.data_mem.len() - 1);
+        e.store_reg(Register::RDP, base_addr as i32);
+
+        let stack_start = base_addr - GLOBAL_DATA_BYTES;
+        e.store_reg(Register::RSP, stack_start as i32);
+        e.store_reg(Register::RFP, stack_start as i32);
 
         Ok(e)
     }

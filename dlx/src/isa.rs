@@ -266,6 +266,7 @@ impl Register {
     pub const R0: Register = Register(0);
     pub const RFP: Register = Register(28);
     pub const RSP: Register = Register(29);
+    pub const RDP: Register = Register(30); // RDP = "data pointer register", pointer to global data
     pub const RRET: Register = Register(31);
 }
 
