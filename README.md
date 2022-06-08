@@ -24,11 +24,12 @@ To preface the rest of this section, there are a couple ways to invoke the compi
 
 So what does the compiler do anyway?
 1. Compiles binaries, when you pass it the `--arch <ARCH>` flag. Currently DLX is the only supported architecture, so really you can only pass it `--arch dlx`.
-2. Dump the IR that's generated during compilation and end the compilation process there, with the `--dump-ir <FMT>` flag.
+2. Dump what's generated during compilation and end the compilation process there, with the `--dump=<FMT>` flag.
     * There are two format options available:
-        1. `--dump-ir text` formats IR as a pseudo-assembly text file (see the `.ir` files in `tinyc/tests` for examples).
-        2. `--dump-ir graph` formats the IR control-flow graph with the Dot graph description language, which you can then visualize separately however you like.
-    * Importantly, compilation **ends** at IR generation with this flag; you can't both dump IR and compile to a binary (which sucks, but is a shortcoming of the current compiler).
+        1. `--dump=ir` formats IR as a pseudo-assembly text file (see the `.ir` files in `tinyc/tests` for examples).
+        2. `--dump=ir-cfg` formats the IR control-flow graph with the Dot graph description language, which you can then visualize separately however you like.
+        3. `--dump=asm` dumps the generated code as assembly (which also requires you to specify an architecture).
+    * Importantly, compilation does not produce a binary with this flag; you can't both dump text and compile to a binary (which sucks, but is a shortcoming of the current compiler).
 
 ### DLX Functionality
 
@@ -75,6 +76,7 @@ Obviously the first thing I did was implement the requirements for the class:
         * I also wrote a simple naive register allocation before I finished the robust one
     * DLX code generation
         * This was more of a stretch goal rather than a requirement, but I'll include it with the requirements
+        * Formatting DLX code as an assembly file
 * Tests (for everything)
     * Just to make my life easier, I set up basic CI that runs lints and tests for every PR.
 * User-defined functions, as a language feature, which mostly requires extending the middle- and backends
@@ -117,6 +119,7 @@ End-to-end (e2e) tests were much more interesting to set up. I wanted to mimic h
 * A single function that takes in a test name and runs it (with the source file at `<TEST>.tiny`).
     * If a `<TEST>.out` file is detected, the source file is compiled into a DLX binary and emulated, and the output of emulation is compared against that `.out` file. During emulation, if a `<TEST>.in` file is present, it's used as the stdin to the emulated binary.
     * If a `<TEST>.ir` file is detected, the source file is compiled into its pseudo-assembly IR representation and compared against that file.
+    * If a `<TEST>.asm` file is detected, the source file is compiled into DLX assembly and compared against that file.
     * This is where it sucks that you can't both compile into a binary and dump IR in one run, since I needed to compile the file twice for tests that had both `.out` and `.ir` files.
     * Technically I lied a little: all paths above are actually in the `tinyc/tests/rsrc/` directory.
 * A macro that generates this function call given the parameters of the test to run, since I felt like writing a macro just to condense a few lines of copy-pasted code.
@@ -130,11 +133,6 @@ I still had more goals for the quarter which I didn't have time for:
     * When you detect an error, it's reported very inelegantly, because there's no source-level info about where the error occurred. Ideally even if it's just a line/character number where the error occurred in addition to the message, that would be better than nothing.
     * There should be better logic for unifying the way warnings and errors are emitted. Even if parsing stops at the first error, there could be multiple warnings to emit too. In fact, in a robust system there might even be support for multiple errors.
     * Throughout the compiler there are too many naked panics. These should be wrapped in a more well-defined compiler panic mechanism (like the Rustc ICE mechanism).
-* Dumping assembly in addition to IR
-    * I probably would've done this by changing the `--dump-ir` flag into a more general `--dump` flag with 3 options:
-        1. `--dump ir`: IR as pseudo-assembly
-        2. `--dump cfg` or `--dump ir-cfg`: IR as a Dot control-flow graph
-        3. `--dump asm`: Assembly
 * I would've liked to give the [flexstr](https://github.com/nu11ptr/flexstr) crate a shot, because it seems to fit my use case pretty well.
 * I played around with the idea of adding new language features, but never had time to get anywhere:
     * Logical operators for conditions
