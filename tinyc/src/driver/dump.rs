@@ -4,16 +4,43 @@ use std::{
     io::Write,
     str::FromStr,
 };
-use crate::ir::{
-    fmt::{FmtResult, GraphWriter, IrFormat, IrFormatter, TextWriter},
-    IrStore,
+use crate::{
+    codegen::{dlx, SupportedArch},
+    ir::{
+        fmt::{FmtResult, GraphWriter, IrFormat, IrFormatter, TextWriter},
+        IrStore,
+    },
 };
+use super::OptConfig;
 
-pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> FmtResult {
-    let mut f = IrFormatter::new(make_ir_dump_fmt(dump_fmt, wr));
+pub fn dump_from_ir<W: Write>(
+    fmt: DumpFormat,
+    wr: W,
+    ir: IrStore,
+    arch: Option<SupportedArch>,
+    opt: OptConfig,
+) -> FmtResult {
+    match fmt {
+        DumpFormat::Ir => {
+            let mut f = IrFormatter::new(IrFormat::Text(TextWriter::new(wr)));
 
-    for (name, body) in ir.bodies() {
-        f.fmt(name, body)?;
+            for (name, body) in ir.bodies() {
+                f.fmt(name, body)?;
+            }
+        }
+
+        DumpFormat::IrCfg => {
+            let mut f = IrFormatter::new(IrFormat::Graph(GraphWriter::new(wr)));
+
+            for (name, body) in ir.bodies() {
+                f.fmt(name, body)?;
+            }
+        }
+
+        DumpFormat::Asm => match arch {
+            Some(SupportedArch::Dlx) => dlx::gen_asm(ir, wr, opt),
+            None => eprintln!("error: --arch must be specified to dump assembly"),
+        }
     }
 
     Ok(())
@@ -21,17 +48,18 @@ pub fn dump_ir<W: Write>(dump_fmt: IrDumpFormat, wr: W, ir: &IrStore) -> FmtResu
 
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IrDumpFormat {
-    Text, Graph
+pub enum DumpFormat {
+    Ir, IrCfg, Asm,
 }
 
-impl FromStr for IrDumpFormat {
+impl FromStr for DumpFormat {
     type Err = InvalidDumpFormat;
 
-    fn from_str(s: &str) -> Result<IrDumpFormat, Self::Err> {
+    fn from_str(s: &str) -> Result<DumpFormat, Self::Err> {
         match s {
-            "text" => Ok(IrDumpFormat::Text),
-            "graph" => Ok(IrDumpFormat::Graph),
+            "ir" => Ok(DumpFormat::Ir),
+            "ir-cfg" => Ok(DumpFormat::IrCfg),
+            "asm" => Ok(DumpFormat::Asm),
             other => Err(InvalidDumpFormat(other.to_string())),
         }
     }
@@ -47,11 +75,3 @@ impl Display for InvalidDumpFormat {
 }
 
 impl Error for InvalidDumpFormat { }
-
-
-fn make_ir_dump_fmt<W: Write>(dump_fmt: IrDumpFormat, wr: W) -> IrFormat<W> {
-    match dump_fmt {
-        IrDumpFormat::Text => IrFormat::Text(TextWriter::new(wr)),
-        IrDumpFormat::Graph => IrFormat::Graph(GraphWriter::new(wr)),
-    }
-}
