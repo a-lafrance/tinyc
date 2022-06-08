@@ -26,6 +26,7 @@ mod e2e {
     define_e2e_test!(if_then_if);
     define_e2e_test!(if_then_loop);
     define_e2e_test!(if_with_else_with_phis);
+    define_e2e_test!(instr_select);
     define_e2e_test!(loop_no_phis);
     define_e2e_test!(loop_with_if);
     define_e2e_test!(loop_with_loop);
