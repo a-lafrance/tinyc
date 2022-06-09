@@ -36,4 +36,5 @@ mod e2e {
     define_e2e_test!(read_and_write);
     define_e2e_test!(uninit_val);
     define_e2e_test!(trivial_eq);
+    define_e2e_test!(while_if_if);
 }

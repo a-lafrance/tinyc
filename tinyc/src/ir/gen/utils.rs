@@ -48,11 +48,20 @@ pub struct PhiDetectionPass<'bb> {
 }
 
 impl<'bb> PhiDetectionPass<'bb> {
-    pub fn run(bb: &'bb BasicBlockData, block: &Block) -> HashSet<String> {
+    pub fn run(bb: &'bb BasicBlockData, block: &Block) -> Vec<String> {
         let mut pass = PhiDetectionPass::new(bb);
         pass.visit_block(block);
 
-        pass.phis
+        // I hate myself
+        #[allow(unused_mut)]
+        let mut phis: Vec<_> = pass.phis.into_iter().collect();
+
+        #[cfg(test)]
+        {
+            phis.sort();
+        }
+
+        phis
     }
 
     fn new(bb: &'bb BasicBlockData) -> PhiDetectionPass {
