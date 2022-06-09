@@ -52,15 +52,8 @@ impl<'bb> PhiDetectionPass<'bb> {
         let mut pass = PhiDetectionPass::new(bb);
         pass.visit_block(block);
 
-        // I hate myself
-        #[allow(unused_mut)]
         let mut phis: Vec<_> = pass.phis.into_iter().collect();
-
-        #[cfg(test)]
-        {
-            phis.sort();
-        }
-
+        phis.sort();
         phis
     }
 
