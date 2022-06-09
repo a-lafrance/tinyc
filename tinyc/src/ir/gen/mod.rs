@@ -188,7 +188,7 @@ impl IrBodyGenerator {
     fn generate_phis(&mut self, bb1: BasicBlock, bb2: BasicBlock, dest: BasicBlock) -> Vec<(Value, Value, Value)> {
         let bb1_data = self.body.basic_block_data(bb1);
         let bb2_data = self.body.basic_block_data(bb2);
-        let mismatches = bb1_data.values().filter_map(|(var, val)| {
+        let mut mismatches = bb1_data.values().filter_map(|(var, val)| {
             let val = *val;
             let other_val = bb2_data.get_val(var)?;
 
@@ -198,6 +198,7 @@ impl IrBodyGenerator {
                 None
             }
         }).collect::<Vec<_>>();
+        mismatches.sort();
 
         let mut phis = vec![];
 
