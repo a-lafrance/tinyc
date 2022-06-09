@@ -1,0 +1,17 @@
+@main:
+BB1:
+    $8 = const 2
+    $4 = const 3
+    $5 = const 4
+    $2 = const 5
+    $3 = const 6
+    $1 = const 9
+    $6 = const 12
+    $9 = const 24
+    $0 = const 30
+    $7 = const 60
+
+BB0:
+    write $9
+    writeln
+    end

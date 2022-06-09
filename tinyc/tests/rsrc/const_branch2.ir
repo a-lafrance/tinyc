@@ -1,0 +1,10 @@
+@main:
+BB1:
+    $1 = const 0
+    $2 = const 1
+
+BB0:
+    $0 = read
+    write $2
+    writeln
+    end

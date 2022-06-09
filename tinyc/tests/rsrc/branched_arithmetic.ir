@@ -1,0 +1,27 @@
+@main:
+BB0:
+    $0 = read
+    $1 = read
+    $2 = cmp $0, $1
+    ble $2, BB3
+
+BB1:
+    $3 = sub $0, $1
+    write $3
+    writeln
+    $4 = div $0, $1
+    write $4
+    writeln
+    br BB2
+
+BB3:
+    $5 = add $0, $1
+    write $5
+    writeln
+    $6 = mul $0, $1
+    write $6
+    writeln
+
+BB2:
+    nop
+    end
