@@ -5,6 +5,15 @@ use std::{
 use bytes::{BufMut, Bytes, BytesMut};
 use discrim::FromDiscriminant;
 
+// stuff to test:
+    // try to parse each instruction
+    // try to serialize each instruction
+    // basically, make one test per instruction where:
+        // start with instruction
+        // serialize to u32, check u32
+        // parse u32 back into instruction
+        // check that result matches original instruction
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
     F1(F1Opcode, Register, Register, i16),
@@ -24,26 +33,26 @@ impl Instruction {
     const F1_IMM_MASK: u32 = 0xFFFF;
     const F3_IMM_MASK: u32 = 0x03FFFFFF;
 
-    pub fn as_bytes(&self) -> Bytes {
+    pub fn to_bytes(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(Instruction::SIZE_IN_BYTES);
 
         let instr_bytes = match self {
             Instruction::F1(opcode, r1, r2, imm) => {
-                ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
+                ((opcode.to_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
                     | ((r1.0 as u32 & Instruction::REG_MASK) << Instruction::R1_SHIFT)
                     | ((r2.0 as u32 & Instruction::REG_MASK) << Instruction::R2_SHIFT)
                     | (*imm as u32 & Instruction::F1_IMM_MASK)
             },
 
             Instruction::F2(opcode, r1, r2, r3) => {
-                ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
+                ((opcode.to_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
                     | ((r1.0 as u32 & Instruction::REG_MASK) << Instruction::R1_SHIFT)
                     | ((r2.0 as u32 & Instruction::REG_MASK) << Instruction::R2_SHIFT)
                     | (r3.0 as u32 & Instruction::REG_MASK)
             },
 
             Instruction::F3(opcode, imm) => {
-                ((opcode.as_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
+                ((opcode.to_bytes() & Instruction::OPCODE_MASK) << Instruction::OPCODE_SHIFT)
                     | ((*imm as u32) & Instruction::F3_IMM_MASK)
             },
         };
@@ -155,7 +164,7 @@ pub enum F1Opcode {
 }
 
 impl F1Opcode {
-    pub fn as_bytes(self) -> u32 {
+    pub fn to_bytes(self) -> u32 {
         (self as u8) as u32
     }
 
@@ -205,7 +214,7 @@ pub enum F2Opcode {
 }
 
 impl F2Opcode {
-    pub fn as_bytes(self) -> u32 {
+    pub fn to_bytes(self) -> u32 {
         (self as u8) as u32
     }
 }
@@ -244,7 +253,7 @@ pub enum F3Opcode {
 }
 
 impl F3Opcode {
-    pub fn as_bytes(self) -> u32 {
+    pub fn to_bytes(self) -> u32 {
         (self as u8) as u32
     }
 }

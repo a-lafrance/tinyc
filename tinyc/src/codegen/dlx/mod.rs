@@ -21,7 +21,7 @@ pub fn gen_code<W: Write>(ir: IrStore, writer: W, opt: OptConfig) {
     let mut writer = BufWriter::new(writer);
 
     for instr in run_generator(ir, opt).into_iter() {
-        writer.write_all(instr.as_bytes().as_ref()).expect("failed to write instr");
+        writer.write_all(instr.to_bytes().as_ref()).expect("failed to write instr");
     }
 }
 
