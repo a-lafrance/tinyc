@@ -15,6 +15,8 @@ dlx = { git = "https://github.com/a-lafrance/tinyc.git" }
 
 To use the binaries, I recommend installing them with Cargo. `emu` is the emulator, and `viz` is the assembly visualizer (it takes a DLX binary and prints it out as assembly): `cargo install --git https://github.com/a-lafrance/tinyc.git --features cli --bin <BIN> -- dlx`, where `BIN` is either `emu` or `viz`. Then, the binary will be executable by name in your `PATH`.
 
+You may also use the crate from source directly, in which case you'll probably want to use [Cargo workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html) and [path dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#specifying-path-dependencies).
+
 ## Use Cases
 
 I used the ISA implementation to write code generation for my DLX backend. It comes with functionality for serializing instructions to/from raw bytes for that purpose.
